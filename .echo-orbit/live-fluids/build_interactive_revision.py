@@ -31,8 +31,32 @@ def onFrameStart(frame):
     op('/project1/orbit_engine').module.tick()
 '''
 
+LABEL_ATLAS = r'''
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Drawing
+$mask = [Drawing.Bitmap]::new(128,280)
+$canvas = [Drawing.Graphics]::FromImage($mask)
+$canvas.Clear([Drawing.Color]::Black)
+$canvas.TextRenderingHint = 'AntiAliasGridFit'
+$face = [Drawing.Font]::new('Segoe UI', 20, [Drawing.FontStyle]::Regular, [Drawing.GraphicsUnit]::Pixel)
+$align = [Drawing.StringFormat]::new()
+$align.Alignment = 'Center'
+$align.LineAlignment = 'Center'
+$words = 'SUN', 'MERCURY', 'VENUS', 'EARTH', 'MARS'
+for ($i = 0; $i -lt $words.Count; $i++) {
+    $row = [Drawing.RectangleF]::new(0,($i*56),128,56)
+    $canvas.DrawString($words[$i], $face, [Drawing.Brushes]::White, $row, $align)
+}
+$path = Join-Path (Get-Location).Path 'body-names-en.png'
+$mask.Save($path, [Drawing.Imaging.ImageFormat]::Png)
+$align.Dispose()
+$face.Dispose()
+$canvas.Dispose()
+$mask.Dispose()
+'''
+
 GLINTS = '''    if (scene >= 0 && uCamera.w > .02) {
-        vec2 grainStep = vec2(.0039,.0057);
+        vec2 grainStep = 4. / FRAME_SIZE;
         vec3 soft = texture(sTD2DInputs[0], uv+vec2(grainStep.x,0.)).rgb;
         soft += texture(sTD2DInputs[0], uv-vec2(grainStep.x,0.)).rgb;
         soft += texture(sTD2DInputs[0], uv+vec2(0.,grainStep.y)).rgb;
@@ -68,21 +92,31 @@ def install_native():
     builder_path = HERE/'build_tutorial_venus.py'
     builder_scope = dict(globals())
     exec(compile(builder_path.read_text(encoding='utf-8'), str(builder_path), 'exec'), builder_scope)
-    earlier_material = scene.op('feedback_material')
-    if earlier_material is not None:
-        earlier_material.destroy()
-    material = scene.create(baseCOMP, 'feedback_material')
-    material.nodeX, material.nodeY = 210, -305
-    material.color = (.27,.23,.41)
-    page = material.appendCustomPage('Audio')
-    page.appendFloat('Drive', label='Low Frequency and Attack')[0].val = .16
-    page.appendFloat('Detail', label='Mid Frequencies')[0].val = .50
-    final = builder_scope['build_feedback_material'](
-        material, "float(parent().par.Drive)", "float(parent().par.Detail)", (960,540))
-    output = material.create(outTOP, 'out1')
-    output.nodeX, output.nodeY = 3580, 160
-    output.inputConnectors[0].connect(final)
-    material.par.opviewer = output.path
+    for index, name in enumerate(('feedback_material', 'closeup_feedback'), start=3):
+        previous = scene.op(name)
+        if previous is not None:
+            previous.destroy()
+        folded = index == 4
+        material = scene.create(baseCOMP, name)
+        material.nodeX, material.nodeY = 210, -305 - 135 * (index - 3)
+        material.color = (.27,.23,.41)
+        page = material.appendCustomPage('Motion')
+        page.appendFloat('Drive', label='Low Frequency and Attack')[0].val = .16
+        page.appendFloat('Detail', label='Mid Frequencies')[0].val = .50
+        if folded:
+            page.appendFloat('Flowtime', label='Flow Time')[0].val = 0.
+        final = builder_scope['build_feedback_material'](
+            material, 'float(parent().par.Drive)', 'float(parent().par.Detail)', (960, 540),
+            folded=folded)
+        output = material.create(outTOP, 'out1')
+        output.nodeX, output.nodeY = final.nodeX + 205, 160
+        output.inputConnectors[0].connect(final)
+        material.par.opviewer = output.path
+        material.outputConnectors[0].connect(shader.inputConnectors[index])
+        assert shader.inputConnectors[index].connections, name
+        final.cook(force=True)
+        assert not final.errors(), final.errors()
+        assert not output.errors(), output.errors()
 
     for asset in list(scene.vfs):
         if asset.name == 'body-volumes.png':
@@ -90,14 +124,20 @@ def install_native():
     obsolete_volume = scene.op('body_volumes')
     if obsolete_volume is not None:
         obsolete_volume.destroy()
-    material.outputConnectors[0].connect(shader.inputConnectors[3])
-    assert shader.inputConnectors[3].connections, 'Feedback material is disconnected'
+    engine = scene.op('orbit_engine').module
+    width, height = engine.FRAME_SIZE
+    shader.par.resolutionw, shader.par.resolutionh = width, height
+    scene.op('viewport').par.w, scene.op('viewport').par.h = width, height
+    names = 'body-names-en.png'
+    for asset in list(scene.vfs):
+        if asset.name in ('body-names.png', names):
+            asset.destroy()
+    scene.vfs.addFile(str(folder / names), overrideName=names)
+    scene.op('planet_names').par.file = f'vfs:/project1:{names}'
     final_top = scene.op('out_image')
     final_top.cook(force=True)
-    assert (final_top.width, final_top.height) == (1200,675)
+    assert (final_top.width, final_top.height) == engine.FRAME_SIZE
     assert not shader.errors(), shader.errors()
-    assert not final.errors(), final.errors()
-    assert not output.errors(), output.errors()
     clock.text = RELEASE_CLOCK
     clock.par.framestart = True
     root.time.play = True
@@ -118,6 +158,8 @@ def stage():
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / 'Interactive-stage.toe'
     from prepare_install import dat
+    subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', LABEL_ATLAS],
+                   cwd=folder, check=True)
     with TemporaryDirectory(dir=folder) as temporary:
         pack = Path(temporary).resolve()
         assert pack.parent == folder.resolve()

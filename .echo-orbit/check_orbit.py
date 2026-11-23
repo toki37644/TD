@@ -26,30 +26,47 @@ def check_log(line):
 
 
 def check_states():
+    for time in (0., 3., 17., 140.):
+        bodies = qa_mod.orbit_positions(time)
+        assert all(body[1] == 0. for body in bodies)
+        assert all(right[0] > left[0] for left, right in zip(bodies, bodies[1:]))
+    for point, axis, direction in (((.02,.38), 0, -1), ((.98,.36), 0, 1),
+                                   ((.50,.02), 1, -1), ((.50,.98), 1, 1)):
+        state = qa_mod.CameraState(0.)
+        state.advance(3., (.5,.5), False)
+        for frame in range(1, 77):
+            state.advance(3. + frame / 60., point, True)
+        assert direction * state.camera[axis] > .09, (point, state.camera)
+        assert state.camera[2:] == (1., 0.)
+    check_log('PASS portrait overview pans in four directions and retains the left-to-right axis')
     for i in range(5):
         state = qa_mod.CameraState(0.)
         state.advance(3., (.5, .5), False)
-        hover = state.center_uv(i)
         for frame in range(1, 77):
+            hover = state.center_uv(i)
             state.advance(3. + frame / 60., hover, True)
-        assert state.focus == i and not state.entered, (i, state.focus)
-        assert qa_mod.screen_distance(state.center_uv(i), (.5, .5)) < .036
+        assert state.hover == i and state.focus == -1 and not state.entered, (i, state.hover)
+        assert state.camera[2:] == (1., 0.) and state.label_id == i and state.label_alpha > .94
+        for frame in range(77, 104):
+            state.advance(3. + frame / 60., (.50,.65), True)
+        assert state.hover == -1 and state.label_alpha < .09
+        hover = state.center_uv(i)
         state.click(hover)
         assert state.entered and state.focus == i
-        for frame in range(77, 103):
+        for frame in range(104, 130):
             state.advance(3. + frame / 60., (.16, .28), True)
         assert state.intent > .80 and state.lock_fade > .83
         state.click(qa_mod.RETURN)
-        for frame in range(103, 180):
+        for frame in range(130, 207):
             state.advance(3. + frame / 60., (.05, .917), True)
         assert not state.entered and state.focus == -1 and state.camera[3] < .009
     assert qa_mod.orbit_positions(0.) != qa_mod.orbit_positions(1.)
-    check_log('PASS all five hover targets, camera tracking, commit, pointer, return; orbit and spin continue')
+    check_log('PASS all five local hover labels, label decay, click to zoom, pointer and return')
 
 
 def save_frame(name):
     final_top.cook(force=True)
-    assert (final_top.width, final_top.height) == (1200, 675)
+    assert (final_top.width, final_top.height) == qa_mod.FRAME_SIZE
     assert not final_top.errors(), final_top.errors()
     assert not op('/project1/solar_atlas').errors()
     assert not op('/project1/particles').errors()
@@ -139,5 +156,5 @@ for elapsed, stage in ((.32, 'ignition'), (1.28, 'orbit_reveal'), (2.65, 'star_c
     pixels = final_top.numpyArray()[:, :, :3]
     opening_brightness.append(np.count_nonzero(np.max(pixels, axis=2) > .11))
 assert opening_brightness[0] < opening_brightness[1] < opening_brightness[2], opening_brightness
-check_log(f'PASS opening light, expanding rings, and stable solar system {opening_brightness}')
+check_log(f'PASS opening light, axis reveal, and stable solar system {opening_brightness}')
 begin(0)

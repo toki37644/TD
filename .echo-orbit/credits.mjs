@@ -63,7 +63,7 @@ type('音乐星球教程', '天体材质  mrxccc《音乐星球节奏互动》',
   'https://www.bilibili.com/video/BV1pkRiYpEZh/');
 type('音画构思参考', '音画笔记  Vivi S《TD 宇宙回响》', 65, 532, 472, 30, 17, lavender, false,
   'https://xhslink.cn/o/7NuVmtgTRWx');
-type('首页参考', '首页构图  用户提供的暗色密轨星图和录屏', 65, 564, 472, 30, 17, lavender);
+type('首页参考', '首页构图  用户提供的横轴星图、暗色星图与录屏', 65, 564, 472, 30, 17, lavender);
 
 for (const [i, [scene, title, range, id]] of tracks.entries()) {
   const y = 221 + i * 54;
@@ -78,10 +78,10 @@ type('使用说明', '音乐按 CC BY 4.0 署名。特写星云节选自《宇�
 
 slide.speakerNotes.text = [
   ...visual.map(ref=>`${ref.title}，${ref.artist}，小红书。${ref.url}。图截自用户提供的录屏。`),
-  '天体生成方法参考 mrxccc《TouchDesigner 教程｜音乐星球节奏互动》。在 TouchDesigner 重建反馈、位移和颜色映射节点。https://www.bilibili.com/video/BV1pkRiYpEZh/',
+  '天体生成方法参考 mrxccc《TouchDesigner 教程｜音乐星球节奏互动》。在 TouchDesigner 重建反馈、位移、颜色映射与两道亮边合成。https://www.bilibili.com/video/BV1pkRiYpEZh/',
   '音画构思参考，Vivi S《TD 宇宙回响》。https://xhslink.cn/o/7NuVmtgTRWx',
   '天体特写中的星云节选自一粒六元《TD 星际环游 003／宇宙诞生》，取自用户提供的录屏。保留核心星云片段，按天体调色，并叠加实时颗粒。',
-  '首页的长条尘带、太阳粒子弧和特写中的粒子球参考用户提供的图片与录屏。',
+  '竖版总览的横向天体排列参考用户提供的侧视星图，原作者未标注。长条尘带、太阳粒子弧和特写粒子参考用户提供的图片与录屏。',
   '粒子实现参考，Bileam Tschepe《粒子扭曲效果》（授权中文教程）。https://www.bilibili.com/video/BV1ye4y1m7iv/ 。音乐频段映射参考《Audioreactive Particle Cloud》。https://www.elekktronaut.com/tutorials/audioreactive-particle-cloud-new 。',
   ...tracks.map(([scene, title, range, id])=>`${scene}：${title} by Scott Buckley (CC BY 4.0), ${range}. https://www.scottbuckley.com.au/library/${id}/`),
   '总览使用 Computations in a Snowstorm 的 No Cello 混音。所有片段均为 24 秒，做了截取、淡入淡出和音量调整。CC BY 4.0 https://creativecommons.org/licenses/by/4.0/ 。作者使用说明 https://www.scottbuckley.com.au/library/using-this-music/ 。',

@@ -27,7 +27,8 @@ def record_preview(state=None):
         panel.op('audio_device').par.active = False
         movie = panel.create(moviefileoutTOP,'review_movie')
         movie.inputConnectors[0].connect(panel.op('out_image'))
-        movie.par.file = str(where/'interaction-native.mov')
+        release = Path((where/'build-ok.txt').read_text(encoding='utf-8').strip())
+        movie.par.file = str(release.with_suffix('.mov'))
         movie.par.videocodec = 'mjpa'
         movie.par.moviepixelformat = 'yuv422'
         movie.par.quality = 92
@@ -41,27 +42,43 @@ def record_preview(state=None):
     now = start + step/60.
     app = native.state
     outside = (.93,.08)
-    left, right = (.22,.63), (.79,.65)
-    if step < 104:
+    left, right = (.23,.31), (.77,.69)
+    if step < 76:
         point, inside = outside, False
-    elif step < 204:
+    elif step < 104:
+        point, inside = (.85,.74), True
+    elif step <= 204:
         point, inside = app.center_uv(2), True
     elif step < 360:
         t = min(1., (step-204)/125.)
-        point, inside = (.50-.28*t,.51+.12*t), True
+        point, inside = (.50-.27*t,.50-.19*t), True
     elif step < 456:
         point, inside = left, True
     elif step < 589:
         t = min(1., (step-456)/110.)
-        point, inside = (.22+.57*t,.63+.16*t*(1.-t)+.02*t), True
+        point, inside = (.23+.54*t,.31+.38*t+.16*t*(1.-t)), True
     elif step < 695:
         point, inside = right, True
-    else:
+    elif step < 760:
         point, inside = module.RETURN, step < 723
+    else:
+        point, inside = (.08,.22), True
     if step in (204, 371, 695):
         app.click(point)
+    if step == 204:
+        assert app.entered and app.focus == 2
+    elif step == 371:
+        assert app.entered and app.burst is not None
+    elif step == 695:
+        assert not app.entered
     app.advance(now, point, inside)
     native.audio()
+    if step == 170:
+        assert app.hover == 2 and app.label_alpha > .9 and app.camera[2] == 1.
+    elif step == 328:
+        assert app.entered and app.arrival > .99 and native.track == 3
+    elif step == 778:
+        assert native.track == 0
     native.apply(force=True)
     movie.cook(force=True)
     if step in (75, 170, 248, 328, 403, 561, 646, 778):
@@ -75,7 +92,7 @@ def record_preview(state=None):
         assert not movie.errors(), movie.errors()
         assert not app.entered and app.focus == -1
         with report.open('a',encoding='utf-8') as log:
-            print('PASS routed preview and captured stereo interaction movie',file=log)
+            print('PASS recorded hover, transition into Venus, particle burst, and return to overview audio',file=log)
         run('project.quit(force=True)',delayFrames=5)
         return
     state[1] += 1

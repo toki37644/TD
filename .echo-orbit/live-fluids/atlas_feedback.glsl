@@ -26,6 +26,10 @@ vec3 tutorialInk(vec2 p, int id) {
     return feedbackDye(texture(sTD2DInputs[3], .5 + p*vec2(.204,.362)).rgb, id);
 }
 
+vec3 foldedInk(vec2 p, int id) {
+    return feedbackDye(texture(sTD2DInputs[4], .5 + p*vec2(.192,.341)).rgb, id);
+}
+
 vec3 rotateFeedback(vec2 q, int id, float angle) {
     float d = dot(q,q);
     if (d > 1.01) return vec3(0.);
@@ -68,15 +72,15 @@ vec3 bodyLayer(vec3 background, vec2 world, vec2 cursor, vec4 body, int id,
         background = background*(1.-visible*.58*core) + corona*taper*visible*(1.-.72*locked*core);
         if (locked < .002) return background;
     }
-    if (r > 1.20) return background;
+    if (r > 1.34) return background;
     float sphereAmount = id == 0 ? 0. : 1.-locked;
     vec3 sphere = sphereAmount > .002 ? rotateFeedback(q,id,body.w*8.5) : vec3(0.);
     vec2 flatPosition = q/(1.+.037*beat);
-    vec3 sheet = locked > .002 ? tutorialInk(flatPosition,id) : vec3(0.);
-    sheet *= 1.-smoothstep(1.085,1.18,length(flatPosition));
+    vec3 sheet = locked > .002 ? foldedInk(flatPosition,id) : vec3(0.);
+    sheet *= 1.-smoothstep(1.20,1.33,length(flatPosition));
     float peak = max(max(sheet.r,sheet.g),sheet.b);
     float flatMask = smoothstep(.015,.24,peak);
     float sphereMask = (1.-smoothstep(.974,1.015,r))*sphereAmount;
-    return background*(1.-visible*(.94*sphereMask+.82*locked*flatMask)) +
-           visible*(sphereAmount*sphere + locked*sheet*(1.+.15*uAudio.w));
+    return background*(1.-visible*(.94*sphereMask+.90*locked*flatMask)) +
+           visible*(sphereAmount*sphere + locked*sheet*(1.+.075*uAudio.w));
 }

@@ -14,7 +14,8 @@ uniform vec4 uTransition;
 
 out vec4 fragColor;
 
-const vec2 ASPECT = vec2(16.0 / 9.0, 1.0);
+const vec2 ASPECT = vec2(9.0 / 16.0, 1.0);
+const vec2 FRAME_SIZE = vec2(720.0, 1280.0);
 
 float hash21(vec2 p) {
     vec3 q = fract(vec3(p.xyx) * .1031);
@@ -59,6 +60,9 @@ vec3 nebulaLayer(vec2 screen, vec2 pointer, int scene) {
     float pull = bell(length(rel) / .23) * uPointer.w;
     field += .14 * rel * pull;
     field *= 1.0 - (.039 * uAudio.x + .018 * uAudio.w) * uScene.y;
+    // Follow the tall particle plumes using the same portrait frame.
+    field = turn(-.64) * field;
+    field *= vec2(1.03,1.38);
     vec2 source;
     vec3 tint;
     float envelope = 1.0;
@@ -346,7 +350,7 @@ float planetLight(int index, float time) {
 vec3 openingSignal(vec2 point, float time) {
     float at = 1.0 - smoothstep(.39, 1.22, time);
     float pulse = smoothstep(.03, .28, time) * at;
-    vec2 p = point * (675.0 * uCamera.z);
+    vec2 p = point * (FRAME_SIZE.y * uCamera.z);
     float radius = length(p);
     float glimmer = bell(radius / 4.5) + .25 * bell(radius / 21.0);
     glimmer += bell(p.y / 1.0) * bell(p.x / 63.0) * .32;
@@ -355,78 +359,31 @@ vec3 openingSignal(vec2 point, float time) {
     return vec3(.67, .81, 1.0) * (pulse * glimmer + wave);
 }
 
-vec3 atlasDial(vec2 point, vec2 orbitUV, float time) {
-    float wide = 1.0 - smoothstep(.06, .71, uCamera.w);
-    if (wide < .002) return vec3(0.0);
-    const float TAU = 6.2831853;
-    float pixels = 675.0 * uCamera.z;
-    vec2 plane = turn(.21) * point / vec2(1.0, .87);
-    float radius = length(plane);
-    float angle = atan(plane.y, plane.x);
-    vec3 silver = vec3(.47, .56, .72);
-    vec3 blue = vec3(.20, .35, .70);
-
-    float sweep = fract((angle + 1.34) / TAU);
-    float sweepTime = smoothstep(.22, 1.68, time);
-    float open = smoothstep(.12, .31, time) * (1.0 - smoothstep(sweepTime, sweepTime + .075, sweep));
-    open = mix(open, 1.0, smoothstep(1.30, 1.77, time));
-    float lead = bell((sweep - sweepTime) / .014) * (1.0 - smoothstep(1.27, 1.67, time));
-    float shimmer = .84 + .16 * sin(angle * 3.0 - time * .32);
-    float nearArc = arcGate(angle, -2.08, 1.29);
-    float opposite = arcGate(angle, .66, .78);
-    float inner = orbitTrace(radius, .235, pixels, .59) * (.21 + .55 * nearArc + .47 * opposite);
-    float middle = orbitTrace(radius, .264, pixels, .65) * (.17 + .73 * nearArc);
-    float pair = orbitTrace(radius, .274, pixels, .58) * (.19 + .48 * opposite);
-    float outer = orbitTrace(radius, .320, pixels, .83) * (.35 + .68 * arcGate(angle, -1.71, 1.34));
-    float fineGap = 1.0 - bell((angle + .91) / .082);
-    vec3 color = (silver * (.32 * inner + .24 * middle) +
-                  blue * (.29 * pair + .49 * outer)) * (shimmer * open + lead) * fineGap;
-
-    float slots = angle * 144.0 / TAU;
-    float spoke = abs(fract(slots + .5) - .5);
-    float cardinal = 1.0 - step(.1, mod(floor(slots + .5), 6.0));
-    float stroke = bell(spoke * TAU / 144.0 * radius * pixels / .72);
-    float tickSpan = (1.0 - smoothstep(.0032 + .008 * cardinal, .0045 + .009 * cardinal, abs(radius - .257)));
-    color += silver * stroke * tickSpan * (.14 + .12 * cardinal) * open * (.17 + .83 * nearArc);
-    float beadAngle = abs(fract(angle * 58.0 / TAU + .5) - .5) * TAU / 58.0;
-    float bead = length(vec2((radius - .299) * pixels, radius * beadAngle * pixels));
-    float pearl = bell(bead / 1.17) + .24 * bell(bead / 3.3);
-    float lantern = pow(.5 + .5 * sin(angle * 2.0 + time * .54), 3.0);
-    color += mix(blue, silver, .36 + .47 * lantern) * pearl * (.16 + .27 * lantern) * open * (.22 + .78 * nearArc);
-
-    float outerReveal = smoothstep(.78 + .31 * radius, 1.86 + .38 * radius, time);
-    float partialOuter = arcGate(angle, 1.98, 1.12);
-    float lowerArc = arcGate(angle, -1.08, 1.16);
-    float etch = orbitTrace(radius, .390, pixels, .74) * (.18 + .51 * partialOuter);
-    etch += .65 * orbitTrace(radius, .407, pixels, .63) * partialOuter;
-    etch += .68 * orbitTrace(radius, .478, pixels, .70) * lowerArc;
-    etch += .57 * orbitTrace(radius, .587, pixels, .65) * (.2 + .8 * partialOuter);
-    etch += .40 * orbitTrace(radius, .756, pixels, .65) * (.15 + .85 * lowerArc);
-    float sweepBeam = bell((radius - (.32 + .23 * fract(time * .105))) / .009);
-    color += mix(silver, blue, .57) * (etch * .27 + sweepBeam * .026 * partialOuter) * outerReveal;
-
-    float orbitR[4] = float[4](.154, .318, .388, .653);
-    for (int i = 0; i < 4; ++i) {
-        float rank = float(i);
-        float arrived = smoothstep(.52 + .14 * rank, 1.30 + .19 * rank, time);
-        float height = orbitUV.y/orbitR[i];
-        float sine = 2.*height/(.68+sqrt(max(.003,.4624+.88*height)));
-        vec2 actualTrack=vec2(orbitUV.x,orbitR[i]*sine);
-        float trackRadius=length(actualTrack);
-        float trackAngle=atan(actualTrack.y,actualTrack.x);
-        float trace = orbitTrace(trackRadius, orbitR[i], pixels, .90);
-        float companion = orbitTrace(trackRadius, orbitR[i] + .014, pixels, .74);
-        float side = arcGate(trackAngle, 2.15 - .72 * rank, .94);
-        float dotted = bell((fract(trackAngle * 29.0 / TAU + .5) - .5) / .13);
-        color += mix(silver, blue, .38 + .11 * rank) * arrived *
-                 (trace * (.095 + .17 * side) + companion * (.067 + .15 * dotted) * side);
-    }
-    return color * wide;
+vec3 atlasDial(vec2 world, float time) {
+    float wide = 1.0 - smoothstep(.06,.71,uCamera.w);
+    if (wide < .002) return vec3(0.);
+    vec2 px = world * FRAME_SIZE.y * uCamera.z;
+    float reveal = mix(-.32,.78,smoothstep(.20,1.77,time));
+    float open = 1.-smoothstep(reveal,reveal+.10,world.x);
+    float core = bell(px.y/.71);
+    float twin = bell((abs(px.y)-4.1)/.61);
+    float spread = (.45+.55*bell((world.x+.11)/.39));
+    float grain = hash21(floor(vec2(px.x*.57,px.y*.82)));
+    float shimmer = .64+.36*sin(px.x*.024-time*.77);
+    float lines = (.25*core+.10*twin+.036*bell(px.y/13.))*spread*shimmer;
+    float survey = bell((abs(px.y)-23.)/.52)*(.21+.79*bell((world.x+.08)/.45));
+    float marker = bell((fract(px.x/34.+.5)-.5)*47.);
+    float graduation = marker*(bell((abs(px.y)-15.)/3.4)+.48*bell((abs(px.y)-27.)/1.7));
+    float dust = pow(grain,11.)*bell(px.y/13.)*(.42+.58*shimmer);
+    float sweep = bell((world.x-reveal)/.009) * bell(px.y/2.7);
+    vec3 silver = vec3(.63,.68,.77);
+    vec3 ray = silver*(lines+.064*survey+.183*graduation+.40*dust+.31*sweep);
+    return ray * open * wide;
 }
 
 vec3 planetDial(vec2 point, vec4 body, int index, float time, bool hovered) {
-    vec2 p = (point - body.xy) * (675.0 * uCamera.z);
-    float rim = body.z * (675.0 * uCamera.z);
+    vec2 p = (point - body.xy) * (FRAME_SIZE.y * uCamera.z);
+    float rim = body.z * (FRAME_SIZE.y * uCamera.z);
     float distance = length(p);
     if (distance > rim + 26.0) return vec3(0.0);
     float angle = atan(p.y, p.x);
@@ -441,7 +398,7 @@ vec3 planetDial(vec2 point, vec4 body, int index, float time, bool hovered) {
 }
 
 float nameInk(vec2 point, int index) {
-    vec2 coord = point / vec2(64.0,28.0) + .5;
+    vec2 coord = point / vec2(100.0,44.0) + .5;
     if (any(lessThan(coord,vec2(0.0))) || any(greaterThan(coord,vec2(1.0)))) return 0.0;
     coord.y = (coord.y + float(4 - index)) / 5.0;
     return texture(sTD2DInputs[2], coord).r;
@@ -452,12 +409,13 @@ vec3 planetCaption(vec2 screen, vec4 body, int index) {
     float side = uLabel.z;
     float dissolve = 1.0 - alpha;
     float outward = uLabel.w;
-    float pixels = 675.0 * uCamera.z;
+    float pixels = FRAME_SIZE.y * uCamera.z;
     vec2 center = (body.xy - uCamera.xy) * pixels;
     float radius = body.z * pixels;
-    vec2 origin = center + vec2(side * (radius * .76 + 73.0), min(radius * .64 + 32.0, 128.0));
-    origin = clamp(origin, vec2(-535.0,-295.0), vec2(535.0,295.0));
-    vec2 point = screen * 675.0;
+    vec2 origin = center + vec2(side * (radius * .32 + 15.0), radius + 43.0);
+    vec2 limit = FRAME_SIZE*.5-vec2(64.,51.);
+    origin = clamp(origin, -limit, limit);
+    vec2 point = screen * FRAME_SIZE.y;
     vec2 local = point - origin;
     if (abs(local.x) > (radius + 157.0) || abs(local.y) > radius + 63.0) return vec3(0.0);
 
@@ -482,9 +440,9 @@ vec3 planetCaption(vec2 screen, vec4 body, int index) {
     float particleLife = alpha * (1.0 - smoothstep(.64,.995,alpha)) * (outward > .5 ? 2.9 : 2.1);
     vec3 color = vec3(.78,.89,1.0) * (letters + specks * particleLife);
 
-    vec2 tip = center + vec2(side * .67, .71) * (radius + 4.0);
-    vec2 elbow = origin + vec2(-side * 46.0, -18.0);
-    vec2 end = origin + vec2(side * 34.0, -18.0);
+    vec2 tip = center + vec2(side * .21, .91) * (radius + 4.0);
+    vec2 elbow = origin + vec2(-side * 14.0, -18.0);
+    vec2 end = origin + vec2(side * 25.0, -18.0);
     float wire = min(lineSegment(point,tip,elbow), lineSegment(point,elbow,end));
     float light = bell(wire / .74) * .42 + bell(length(point - tip) / 2.55) * .78;
     color += mix(vec3(.38,.59,.90), whiteLight(index), .28) * light * settled;
@@ -493,7 +451,7 @@ vec3 planetCaption(vec2 screen, vec4 body, int index) {
 
 vec3 instrument(vec3 color, vec2 p, vec2 cursor) {
     // One symbol only, anchored to the frame in a dedicated hit area.
-    vec2 hand = (p - (vec2(.053, .918) - .5) * ASPECT) * 675.0;
+    vec2 hand = (p - (vec2(.092, .926) - .5) * ASPECT) * FRAME_SIZE.y;
     float alpha = smoothstep(.10, .85, uScene.y);
     float halo = bell(length(hand) / 27.5);
     float circle = 1.0 - smoothstep(.75, 1.65, abs(length(hand) - 19.0));
@@ -503,7 +461,7 @@ vec3 instrument(vec3 color, vec2 p, vec2 cursor) {
     float arrow = 1.0 - smoothstep(.75, 1.60, stroke);
     color *= 1.0 - .54 * halo * alpha;
     color += vec3(.70, .73, .88) * alpha * (circle * (.21 + .37 * uScene.w) + .86 * arrow);
-    float drag = length(p - cursor) * 675.0;
+    float drag = length(p - cursor) * FRAME_SIZE.y;
     color += hotTint(int(uScene.x + .5)) * (.35 * bell(drag / 2.6) + .075 * bell(drag / 13.5)) * uPointer.w;
     return color;
 }
@@ -529,13 +487,13 @@ void main() {
     }
 
     vec4 bodies[5] = vec4[5](uSun, uMercury, uVenus, uEarth, uMars);
-    vec2 disk = turn(.12) * (world - uSun.xy);
+    vec2 disk = world - uSun.xy;
     vec2 relativeSun = world - uSun.xy;
     float arcd = length(relativeSun / vec2(1.0, .96));
     float arcMist = bell((arcd - .202) / .033) * (1.0 - bell(disk.y / .039));
     float sideMist = bell((disk.y + .024 * sin(disk.x * 4.7)) / .054) * bell(disk.x / .60);
     color += vec3(.12, .15, .27) * (.47 * arcMist + .13 * sideMist) * (1.0 - uCamera.w) * skyLight;
-    color += atlasDial(relativeSun, turn(-.032)*relativeSun, time);
+    color += atlasDial(world, time);
     int hovered = int(floor(uScene.z + .5));
     if (uCamera.w < .63) {
         for (int i = 1; i < 5; ++i) {
@@ -543,14 +501,13 @@ void main() {
         }
     }
 
-    // Draw far side first, non-selected bodies fade as the camera travels.
-    for (int layer = 0; layer < 2; ++layer) {
-        for (int i = 0; i < 5; ++i) {
-            if (i == scene) continue;
-            if ((layer == 0 && bodies[i].y >= uSun.y) || (layer == 1 && bodies[i].y < uSun.y)) continue;
-            float appear = (1.0 - smoothstep(.05, .76, uCamera.w)) * planetLight(i, time);
-            color = bodyLayer(color, world, pointer, bodies[i], i, appear, false, time);
-        }
+    // Hover scales a single body without changing the overview camera.
+    for (int i = 0; i < 5; ++i) {
+        if (i == scene) continue;
+        vec4 body = bodies[i];
+        if (int(floor(uLabel.x+.5)) == i) body.z *= 1.+.14*uLabel.y;
+        float appear = (1.0 - smoothstep(.05, .76, uCamera.w)) * planetLight(i, time);
+        color = bodyLayer(color, world, pointer, body, i, appear, false, time);
     }
     if (scene >= 0) color = bodyLayer(color, world, pointer, bodies[scene], scene, 1.0, true, time);
     // Near-side grains cross the center of the solar disk.
@@ -560,15 +517,17 @@ void main() {
 
     if (hovered >= 0) {
         vec4 body = bodies[hovered];
-        float d = (length(world - body.xy) - body.z) * 675.0 * uCamera.z;
+        float d = (length(world - body.xy) - body.z) * FRAME_SIZE.y * uCamera.z;
         float guide = bell((d - 6.0) * .73) * .41;
         color += (hotTint(hovered) + .22) * guide * (1.0 - smoothstep(.10, .69, uCamera.w));
     }
     color *= 1.0 - .30 * smoothstep(.43, 1.05, length(screen));
     color = instrument(color, screen, pointer);
     int label = int(floor(uLabel.x + .5));
-    if (label >= 0 && label < 5 && uLabel.y > .015) color += planetCaption(screen, bodies[label], label);
-    color += (hash21(floor(uv * vec2(1200.0, 675.0))) - .5) * .005;
+    if (label >= 0 && label < 5 && uLabel.y > .015 && uCamera.w < .35) {
+        color += planetCaption(screen, bodies[label], label) * (1.-smoothstep(.02,.35,uCamera.w));
+    }
+    color += (hash21(floor(uv * FRAME_SIZE)) - .5) * .005;
     color = min(color, .82) + .18 * (1.0 - exp(-max(color - .82, 0.0) / .18));
     fragColor = TDOutputSwizzle(vec4(clamp(color, 0.0, 1.0), 1.0));
 }

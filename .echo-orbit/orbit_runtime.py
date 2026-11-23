@@ -8,17 +8,17 @@ import numpy as np
 
 
 ROOT = '/project1/'
-ASPECT = 16 / 9
-SIZE = (960, 540)
+FRAME_SIZE = (720, 1280)
+ASPECT = FRAME_SIZE[0] / FRAME_SIZE[1]
+SIZE = (540, 960)
 ARRIVAL_SECONDS = 1.52
 SCENES = ('overview', 'sun', 'mercury', 'venus', 'earth', 'mars')
-RADII = (.080, .024, .031, .034, .028)
-DISTANCES = (0, .154, .318, .388, .653)
-PHASES = (0, 3.12, 3.04, .88, 1.47)
-SPEEDS = (0, .047, .033, .024, .016)
+RADII = (.065, .013, .023, .027, .020)
+AXIS_POSITIONS = (-.205, -.076, .024, .132, .232)
+AXIS_PHASES = (0, 1.37, 2.67, .87, 1.54)
+ORBIT_SPEEDS = (0, .27, .21, .16, .13)
 SPINS = (.045, .071, -.049, .088, .072)
-TILT = .032
-RETURN = (.053, .918)
+RETURN = (.092, .926)
 
 
 def approach(current, target, dt, rate):
@@ -35,17 +35,15 @@ def smooth_between(first, last, value):
 
 
 def orbit_positions(time):
-    sun = (-.009, -.158)
-    rows = []
-    for i, radius in enumerate(RADII):
-        phase = PHASES[i] + time * SPEEDS[i]
-        x = DISTANCES[i] * cos(phase)
-        lift = sin(phase)
-        y = DISTANCES[i] * lift * (.68 + .22 * lift)
-        rows.append((x * cos(TILT) - y * sin(TILT) + sun[0],
-                     x * sin(TILT) + y * cos(TILT) + sun[1],
-                     radius, time * SPINS[i] + i * .83))
-    return rows
+    # An edge-on projection keeps the four orbits aligned on one axis.
+    return [(center + (0. if i == 0 else .006 + i*.001) * cos(AXIS_PHASES[i] + time*ORBIT_SPEEDS[i]),
+             0., radius, time*SPINS[i] + i*.83)
+            for i, (center, radius) in enumerate(zip(AXIS_POSITIONS, RADII))]
+
+
+def explore_axis(position, extent):
+    edge = (position - .5) * 2.
+    return np.sign(edge) * extent * smooth_between(.43, .99, abs(edge))
 
 
 class CameraState:
@@ -54,13 +52,12 @@ class CameraState:
         self.time = self.dt = self.flow_time = 0.0
         self.bodies = orbit_positions(0.)
         self.camera = (0., 0., 1., 0.)
+        self.explore = (0., 0.)
         self.pointer = (.5, .5)
         self.pointer_velocity = (0., 0.)
-        self.focus_anchor = self.pointer
         self.intent = .0
         self.motion = .0
-        self.catch = self.timelock = 0.0
-        self.hover_time = self.away_time = 0.0
+        self.timelock = 0.0
         self.hover = self.focus = self.shown = -1
         self.entered = False
         self.back_glow = 0.0
@@ -102,7 +99,6 @@ class CameraState:
         self.arrival = 1.
         self.arrival_start = None
         self.focus = self.hover = -1
-        self.hover_time = self.away_time = 0.0
         self.timelock = self.last + .60
         self.cursor_trail.clear()
         self.burst = None
@@ -116,10 +112,11 @@ class CameraState:
             else:
                 self.burst = ((position[0] - .5) * ASPECT, position[1] - .5, self.last)
             return
-        target = self.focus if self.focus >= 0 else self.hit(position)
+        target = self.hit(position)
         if target >= 0:
             u, v = self.center_uv(target)
-            radius = self.bodies[target][2] * self.camera[2]
+            scale = 1. + .14 * self.label_alpha if self.label_id == target else 1.
+            radius = self.bodies[target][2] * self.camera[2] * scale
             self.arrival_origin = ((u - .5) * ASPECT, v - .5, radius)
             self.arrival_start = self.last
             self.arrival = 0.
@@ -134,31 +131,20 @@ class CameraState:
         self.bodies = orbit_positions(self.time)
         self.flow_time += self.dt * (.88 + .66 * self.energy[1])
         dt = self.dt
+        self.hover = self.hit(position) if inside and not self.entered and now >= self.timelock else -1
+        if inside and self.hover < 0 and not self.entered and self.camera[3] < .15:
+            target = (explore_axis(position[0], .14), explore_axis(position[1], .22))
+            self.explore = tuple(approach(before, after, dt, 2.7)
+                                 for before, after in zip(self.explore, target))
         if self.arrival_start is not None:
             self.arrival = min(1., (now - self.arrival_start) / ARRIVAL_SECONDS)
             if self.arrival >= 1.:
                 self.arrival_start = None
-        if not self.entered and self.focus < 0 and now >= self.timelock:
-            hover = self.hit(position) if inside else -1
-            self.hover_time = self.hover_time + dt if hover == self.hover else 0.0
-            self.hover = hover
-            if hover >= 0 and self.hover_time >= .22:
-                self.focus = self.shown = hover
-                self.focus_anchor = position
-                self.catch = now + 1.05
-                self.away_time = 0.0
-        if not self.entered and self.focus >= 0 and now > self.catch:
-            close_to_anchor = screen_distance(position, self.focus_anchor) < .075
-            close_to_subject = screen_distance(position, self.center_uv(self.focus)) < .292
-            self.away_time = 0.0 if inside and (close_to_anchor or close_to_subject) else self.away_time + dt
-            if self.away_time > .22:
-                self.leave()
-
-        if self.focus >= 0:
+        if self.entered and self.focus >= 0:
             x, y, radius, _ = self.bodies[self.focus]
-            detail = (x, y, .268 / radius, 1.)
+            detail = (x, y, (.159 if self.focus == 0 else .199) / radius, 1.)
         else:
-            detail = (0., 0., 1., 0.)
+            detail = (*self.explore, 1., 0.)
         self.camera = tuple(approach(before, after, dt, rate) for before, after, rate in
                             zip(self.camera, detail, (6.4, 6.4, 4.9, 4.3)))
         if self.focus < 0 and self.camera[3] < .008:
@@ -262,14 +248,14 @@ class ParticleField:
         arc = np.exp(-((rim - .5) / .31) ** 2)
         brightness = (.30 + .75 * sparkle ** 2) * arc * y_gap
         brightness *= (.73 + .40 * (lift > 0)) * (1. + .48 * state.energy[0])
-        layers = [(sun_x + lx, sun_y + ly, fade * brightness, .825 + .175 * hue)]
+        layers = [(sun_x + lx*.53, sun_y + ly*.72, fade * brightness*.60, .825 + .175 * hue)]
 
         seed, spread, line, spark, color, tempo = self.stream
         distance = np.clip((seed - .5) * 2., -.99, .99)
         swirl = 2 * np.pi * line + state.flow_time * (.17 + tempo * .09)
         px = distance * .91 + .023 * np.sin(swirl)
-        ridge = -.124 * px + .018 * np.sin(px * 9.1 - .16 * state.flow_time)
-        thickness = .010 + .028 * abs(distance) + .012 * state.energy[0]
+        ridge = .006 * np.sin(px * 14.1 - .22 * state.flow_time)
+        thickness = .004 + .018 * abs(distance) + .011 * state.energy[0]
         py = ridge + self.scatter * thickness * (.48 + .85 * spread)
         embers = np.exp(-((abs(distance) - .29) / .35) ** 2)
         clouds = np.exp(-((abs(distance) - .75) / .20) ** 2)
@@ -279,7 +265,7 @@ class ParticleField:
 
         x, y, intensity, hue = self.sky
         shimmer = .72 + .28 * np.sin(181 * intensity + .47 * state.time)
-        layers.append(((x - .5) * (ASPECT + .26), (y - .5) * 1.26,
+        layers.append(((x - .5) * (ASPECT + .32), (y - .5) * 1.56,
                        (.031 + .20 * intensity ** 5) * shimmer * fade, hue))
         return [((x - cx) * zoom, (y - cy) * zoom, a, h) for x, y, a, h in layers]
 
@@ -314,9 +300,9 @@ class ParticleField:
             strip = -.55 + phase * (1.51 + .27 * side + .22 * bass)
             plume = side * (.055 + .22 * phase) + .085 * spread
             plume += .076 * np.sin(5.6 * strip + time * .76 + branch)
-        lean = (.38, .39, .36, .64, -.48)[i]
-        x = strip * cos(lean) - plume * sin(lean)
-        y = strip * sin(lean) + plume * cos(lean)
+        lean = (.94, 1.17, 1.10, 1.05, -1.11)[i]
+        x = (strip * cos(lean) - plume * sin(lean)) * .68
+        y = (strip * sin(lean) + plume * cos(lean)) * .90
         mx, my = (state.pointer[0] - .5) * ASPECT, state.pointer[1] - .5
         vx, vy = state.pointer_velocity
         dx, dy = mx - x, my - y
@@ -449,6 +435,7 @@ class Atlas:
         self.envelopes = [op(ROOT + 'volume_' + name) for name in SCENES]
         self.cloud = op(ROOT + 'particles')
         self.feedback = op(ROOT + 'feedback_material')
+        self.folds = op(ROOT + 'closeup_feedback')
         self.cloud.lock = True
         self.last_raster = 0.0
         self.hover_origin = None
@@ -463,10 +450,13 @@ class Atlas:
         for pars, values in zip(self.uniform_parameters, self.state.uniforms()):
             for par, value in zip(pars, values):
                 par.val = float(value)
-        if self.feedback is not None:
-            bass, mid, _, attack = self.state.energy
-            self.feedback.par.Drive = float(.16 + .89 * bass + .32 * attack)
-            self.feedback.par.Detail = float(.50 + .96 * mid)
+        bass, mid, _, attack = self.state.energy
+        for material in (self.feedback, self.folds):
+            if material is not None:
+                material.par.Drive = float(.16 + .89 * bass + .32 * attack)
+                material.par.Detail = float(.50 + .96 * mid)
+        if self.folds is not None:
+            self.folds.par.Flowtime = self.state.flow_time
 
     def audio(self):
         target = self.state.focus + 1 if self.state.entered else 0

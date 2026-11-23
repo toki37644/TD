@@ -26,6 +26,23 @@ PALETTE = (
     (0.76, 1.00, .33, .036),
     (1.00, 1.00, .40, .049),
 )
+FOLDED_PALETTE = (
+    (0., .000, .000, .000),
+    (.027, .004, .010, .061),
+    (.069, .028, .066, .54),
+    (.113, .028, .32, .94),
+    (.148, .050, .69, .98),
+    (.181, .21, .77, .99),
+    (.216, .19, .32, .92),
+    (.260, .44, .112, .94),
+    (.306, .98, .138, .71),
+    (.373, .98, .031, .39),
+    (.525, 1., .071, .19),
+    (.625, .93, .15, .072),
+    (.724, 1., .38, .034),
+    (.86, 1., .60, .10),
+    (1., 1., .69, .21),
+)
 
 
 def place(node, x, y):
@@ -48,7 +65,7 @@ def make_node(scene, kind, name, x, y, *inputs, **settings):
     return node
 
 
-def build_feedback_material(scene, power, harmonics, resolution):
+def build_feedback_material(scene, power, harmonics, resolution, *, folded=False):
     make = partial(make_node, scene)
     width, height = resolution
     size = dict(outputresolution='custom', resolutionw=width, resolutionh=height)
@@ -82,7 +99,8 @@ def build_feedback_material(scene, power, harmonics, resolution):
     # The two Slope TOPs and displaced previous frame produce the fluid folds.
     feedback = make(feedbackTOP, 'feedback1', 505, 320, source)
     slope_x = make(slopeTOP, 'slope1', 740, 130, feedback,
-                   red='hluminance', green='neutral', blue='neutral', alpha='one', method='prevnext')
+                   red='hluminance', green='neutral', blue='vluminance' if folded else 'neutral',
+                   alpha='one', method='prevnext')
     slope_y = make(slopeTOP, 'slope2', 740, -30, feedback,
                    red='neutral', green='neutral', blue='vluminance', alpha='one', method='prevnext')
     flow_noise = make(noiseTOP, 'noise3', 740, 315, feedback,
@@ -91,38 +109,63 @@ def build_feedback_material(scene, power, harmonics, resolution):
                       tz=('expr', 'absTime.seconds * .22'))
     flow = make(compositeTOP, 'comp2', 970, 160, flow_noise, slope_x, slope_y,
                 operand='average')
+    weights = (f'.012 + .026 * {power}', f'.020 + .048 * {power}') if folded else (
+        f'.102 + .202 * {power}', f'.145 + .318 * {power}')
     displaced = make(displaceTOP, 'displace2', 1185, 320, feedback, flow, extend='zero',
-                     displaceweight1=('expr', f'.102 + .202 * {power}'),
-                     displaceweight2=('expr', f'.145 + .318 * {power}'))
+                     displaceweight1=('expr', weights[0]), displaceweight2=('expr', weights[1]))
     feedback_level = make(levelTOP, 'level2', 1360, 320, displaced, brightness2=1.009)
-    # Refresh a little of the input every frame so bright folds do not accumulate to solid red.
-    refresher = make(crossTOP, 'feedback_refresh', 1535, 320, feedback_level, source, cross=.052)
-    matte = make(blurTOP, 'soft_outline', 1380, 10, source, size=28)
-    combine = make(compositeTOP, 'comp3', 1620, 160, refresher, matte, operand='multiply')
-    feedback.par.top = refresher.path
+    if folded:
+        code = make(textDAT, 'fold_field_pixel', 1360, -45)
+        code.text = Path(__file__).with_name('feedback_folds.glsl').read_text(encoding='utf-8')
+        fold = make(glslTOP, 'fold_field', 1535, 320, feedback_level, source, pixeldat=code.path)
+        fold.seq.vec.numBlocks = 1
+        fold.par.vec0name = 'uFlow'
+        fold.par.vec0valuex.expr = 'float(parent().par.Flowtime)'
+        fold.par.vec0valuey.expr = power
+        matte = make(blurTOP, 'soft_outline', 1500, 10, source, size=38)
+        combine = make(compositeTOP, 'comp3', 1705, 160, fold, matte, operand='multiply')
+        feedback.par.top = combine.path
+    else:
+        # Small replenishment keeps the overview texture from reaching a solid color.
+        refresher = make(crossTOP, 'feedback_refresh', 1535, 320, feedback_level, source, cross=.052)
+        matte = make(blurTOP, 'soft_outline', 1380, 10, source, size=28)
+        combine = make(compositeTOP, 'comp3', 1620, 160, refresher, matte, operand='multiply')
+        feedback.par.top = refresher.path
     keyboard = make(keyboardinCHOP, 'keyboardin1', 505, 510, keys='r')
     feedback.par.reset.expr = "op('keyboardin1')[0]"
 
     colors = make(tableDAT, 'venus_colors', 1620, -195)
-    for position, r, g, b in PALETTE:
+    for position, r, g, b in FOLDED_PALETTE if folded else PALETTE:
         colors.appendRow([position, r, g, b, 1])
     ramp = make(rampTOP, 'ramp1', 1840, -195, dat=colors.path, type='horizontal',
                 outputresolution='custom', resolutionw=1024, resolutionh=1)
-    smooth = make(blurTOP, 'smooth_lookup_input', 1770, 160, combine, size=2.25)
+    smooth = make(blurTOP, 'smooth_lookup_input', 1885 if folded else 1770, 160,
+                  combine, size=1.15 if folded else 2.25)
     palette = make(lookupTOP, 'lookup1', 1935, 160, smooth, ramp)
     vivid = make(hsvadjustTOP, 'hsvadj1', 2100, 160, palette, saturationmult=1.03)
-    grade = make(levelTOP, 'level3', 2280, 160, vivid, gamma1=.88)
-    color = make(nullTOP, 'null3', 2490, 160, grade)
+    grade = make(levelTOP, 'level3', 2280, 160, vivid, gamma1=.94 if folded else .88)
+    color = make(nullTOP, 'null2' if folded else 'null3', 2490, 160, grade)
     edges = make(edgeTOP, 'edge1', 2710, 340, color, select='luminance',
-                 strength=.29, edgecolorr=.48, edgecolorg=.62, edgecolorb=1.0)
-    combined_edges = make(compositeTOP, 'comp4', 2930, 160, color, edges, operand='add')
+                 strength=.52 if folded else .29, edgecolorr=.40, edgecolorg=.79, edgecolorb=1.0)
+    if folded:
+        first = make(levelTOP, 'level4', 2900, 340, edges, brightness2=.76)
+        glow = make(compositeTOP, 'comp4', 3100, 160, color, first, operand='add')
+        fine = make(edgeTOP, 'edge2', 3300, 340, glow, select='luminance', strength=.63,
+                    edgecolorr=.91, edgecolorg=.67, edgecolorb=1.0)
+        second = make(levelTOP, 'level5', 3500, 340, fine, brightness2=.63)
+        combined_edges = make(compositeTOP, 'comp5', 3700, 160, glow, second, operand='add')
+    else:
+        combined_edges = make(compositeTOP, 'comp4', 2930, 160, color, edges, operand='add')
     texture = make(noiseTOP, 'noise4', 2710, -155, **size, period=.41, harmon=5,
                    tz=('expr', 'absTime.seconds * .116'))
-    texture_level = make(levelTOP, 'level6', 2930, -155, texture, opacity=.128)
-    finish = make(compositeTOP, 'comp6', 3150, 160, combined_edges, texture_level,
+    texture_level = make(levelTOP, 'level6', 2930, -155, texture, opacity=.062 if folded else .128)
+    finish = make(compositeTOP, 'comp6', 3920 if folded else 3150, 160, combined_edges, texture_level,
                   operand='outsideluminance')
-    return make(transformTOP, 'transform2', 3370, 160, finish, sx=1.03, sy=1.03,
-                 bgcolora=1, compover=True, extend='zero')
+    if folded:
+        finish = make(levelTOP, 'level7', 4110, 160, finish, brightness2=.98)
+    transform = make(transformTOP, 'transform2', 4310 if folded else 3370, 160, finish,
+                     sx=1.03, sy=1.03, bgcolora=1, compover=True, extend='zero')
+    return make(nullTOP, 'null3', 4500, 160, transform) if folded else transform
 
 
 def build(audio_file, *, rotation_source=None):
