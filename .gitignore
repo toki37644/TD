@@ -1,0 +1,9 @@
+# Codex 聊天附件缓存
+/.codex-attachments/
+
+# 可由工具安装脚本重新下载的依赖
+/.tools/watchvideo/vendor/
+
+# Python 字节码缓存
+__pycache__/
+*.py[cod]

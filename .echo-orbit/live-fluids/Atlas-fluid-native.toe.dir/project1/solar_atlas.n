@@ -1,0 +1,12 @@
+TOP:glslmulti
+tile 440 340 130 90
+flags =  parlanguage 0
+inputs
+{
+0 	particles
+1 	nebula_footage
+2 	planet_names
+3 	body_volumes
+}
+color 0.17 0.25 0.4 
+end

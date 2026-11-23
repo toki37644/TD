@@ -1,0 +1,5 @@
+?
+interppars 67108864 on
+gain 67108881 1 "op('starfield').par.vec4valuez * 0.19"
+autoexportroot 201326609 "" parent()
+?

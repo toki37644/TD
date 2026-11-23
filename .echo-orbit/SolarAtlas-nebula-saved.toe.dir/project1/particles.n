@@ -1,0 +1,5 @@
+TOP:script
+tile 215 300 130 90
+flags =  lock on parlanguage 0
+color 0.17 0.25 0.4 
+end

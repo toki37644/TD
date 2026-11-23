@@ -1,0 +1,5 @@
+?
+file 201326608 vfs:/project1:nebula-motion.mp4 app.samplesFolder+'/Map/Banana.tif'
+index 201326609 0 me.time.frame
+timecodeop 201326609 "" tdu.Timecode()
+?

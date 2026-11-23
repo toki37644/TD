@@ -1,0 +1,5 @@
+COMP:container
+tile 850 340 160 130
+flags =  current on viewer 1 activate on parlanguage 0
+color 0.17 0.25 0.4 
+end

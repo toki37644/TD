@@ -1,0 +1,10 @@
+PASS all five hover targets, camera tracking, commit, pointer, return; orbit and spin continue
+PASS opening light, expanding rings, and stable solar system [3326, 42038, 61207]
+overview  mix peak 0.012  spectrum [0.012000000104308128, 0.012000000104308128, 0.003000000026077032, 0.03700000047683716]
+sun  mix peak 0.078  spectrum [0.210999995470047, 0.15299999713897705, 0.035999998450279236, 0.3659999966621399]
+mercury  mix peak 0.156  spectrum [0.5929999947547913, 0.8259999752044678, 0.1379999965429306, 0.3449999988079071]
+venus  mix peak 0.090  spectrum [0.5059999823570251, 0.5339999794960022, 0.17599999904632568, 0.23999999463558197]
+earth  mix peak 0.151  spectrum [0.21400000154972076, 0.8539999723434448, 0.23399999737739563, 0.5379999876022339]
+mars  mix peak 0.040  spectrum [0.16699999570846558, 0.2240000069141388, 0.7390000224113464, 0.2639999985694885]
+PASS mouse and music move particle coordinates; pointer motion leaves persistent dust
+PASS all embedded sources decoded, audio output, and six native frames

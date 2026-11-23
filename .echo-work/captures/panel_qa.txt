@@ -1,0 +1,5 @@
+('held', (852919.875, (0.6200000047683716, 0.5)), [False, False, False], [], [None, None, None], ((0.6200000047683716, 0.5), True, True), 852920.093, None)
+('released', None, [False, False, False], [], [None, None, None], ((0.6200000047683716, 0.5), True, False), 852920.859, 852920.75)
+('revealed', None, [True, True, True], [], [None, None, None], ((0.6200000047683716, 0.5), True, False), 852922.265, 852920.75)
+('route', None, [True, True, True], [2, 0, 1], [852922.796, 852923.109, 852922.484], ((0.6299999952316284, 0.6600000262260437), True, False), 852923.218, 852920.75)
+('reset', None, [False, False, False], [], [None, None, None], ((0.9300000071525574, 0.07000000029802322), True, False), 852923.64, None)

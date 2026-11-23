@@ -1,0 +1,5 @@
+CHOP:audioosci
+tile 0 -540 130 90
+flags =  parlanguage 0
+color 0.29 0.2 0.31 
+end

@@ -1,0 +1,32 @@
+?
+pixeldat 67108864 /project1/nebula_pixel
+computedat 67108864 starfield_compute
+vec0name 67108864 uClockPointer
+vec0valuex 67108864 0
+vec0valuey 67108864 0.62
+vec0valuez 67108864 0.5
+vec0valuew 67108864 0
+outputresolution 67108864 custom
+resolutionw 67108864 1200
+resolutionh 67108864 675
+vec1name 67108864 uPulse
+vec1valuex 67108864 0.62
+vec1valuey 67108864 0.5
+vec1valuez 67108864 0
+vec1valuew 67108864 0
+vec2name 67108864 uFlags
+vec2valuex 67108864 0
+vec2valuey 67108864 0
+vec2valuez 67108864 0
+vec2valuew 67108864 0
+vec3name 67108864 uRoute
+vec3valuex 67108864 -1
+vec3valuey 67108864 -1
+vec3valuez 67108864 -1
+vec3valuew 67108864 0
+vec4name 67108864 uMusic
+vec4valuex 67108864 0
+vec4valuey 67108864 0
+vec4valuez 67108864 0
+vec4valuew 67108864 0
+?

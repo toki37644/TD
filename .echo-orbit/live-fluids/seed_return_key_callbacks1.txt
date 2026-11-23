@@ -1,0 +1,10 @@
+def onKey(dat, key, *payload):
+    engine = op('/project1/orbit_engine').module
+    if isinstance(key, str):
+        if payload[-2]:
+            engine.go_back(key)
+    elif getattr(key, 'state', False):
+        engine.go_back(getattr(key, 'webCode', '') or getattr(key, 'key', ''))
+
+def onShortcut(dat, shortcutName, time):
+    op('/project1/orbit_engine').module.go_back(shortcutName)

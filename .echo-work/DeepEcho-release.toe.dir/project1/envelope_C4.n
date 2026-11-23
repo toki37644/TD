@@ -1,0 +1,9 @@
+CHOP:math
+tile 240 -415 130 90
+flags =  parlanguage 0
+inputs
+{
+0 	tone_C4
+}
+color 0.29 0.2 0.31 
+end

@@ -1,0 +1,9 @@
+CHOP:math
+tile 270 -715 130 90
+flags =  parlanguage 0
+inputs
+{
+0 	audio_venus
+}
+color 0.25 0.15 0.36 
+end

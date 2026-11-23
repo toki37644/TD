@@ -1,0 +1,6 @@
+?
+keys 67108864 r
+panels 67108864 /project1/viewport
+rate 201326609 60 me.time.rate
+autoexportroot 201326609 "" parent()
+?

@@ -1,0 +1,6 @@
+DAT:text
+tile 0 -120 130 90
+flags =  viewer 1 parlanguage 0
+color 0.55 0.55 0.55 
+dock solar_atlas
+end

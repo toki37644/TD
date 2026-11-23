@@ -1,0 +1,14 @@
+CHOP:math
+tile 650 -400 130 90
+flags =  parlanguage 0
+inputs
+{
+0 	volume_overview
+1 	volume_sun
+2 	volume_mercury
+3 	volume_venus
+4 	volume_earth
+5 	volume_mars
+}
+color 0.25 0.15 0.36 
+end

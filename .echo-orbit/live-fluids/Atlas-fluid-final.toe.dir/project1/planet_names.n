@@ -1,0 +1,5 @@
+TOP:moviefilein
+tile 210 -55 130 90
+flags =  parlanguage 0
+color 0.16 0.25 0.36 
+end

@@ -1,0 +1,13 @@
+START
+NETWORK INSTALLED
+VALIDATING RENDER
+solar_atlas 1200x675
+body_volumes 800x1200
+planet_names 128x280
+nebula_footage 336x620
+particles 960x540
+out_image 1200x675
+TIMELINE PLAY True
+WRITING C:\Users\toki\Documents\ChatGPT\空\.echo-orbit\live-fluids\Atlas-fluid-final.toe
+SAVED C:\Users\toki\Documents\ChatGPT\空\.echo-orbit\live-fluids\Atlas-fluid-final.toe
+PASS six native views and Escape callback

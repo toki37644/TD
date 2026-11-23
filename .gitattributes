@@ -1,0 +1,8 @@
+*.[tT][oO][eE] filter=lfs diff=lfs merge=lfs -text
+*.[tT][oO][xX] filter=lfs diff=lfs merge=lfs -text
+*.[tT][oO][eE].bkp[0-9]* filter=lfs diff=lfs merge=lfs -text
+*.[mM][pP]4 filter=lfs diff=lfs merge=lfs -text
+*.[mM][oO][vV] filter=lfs diff=lfs merge=lfs -text
+*.[mM][kK][vV] filter=lfs diff=lfs merge=lfs -text
+*.[mM][pP]3 filter=lfs diff=lfs merge=lfs -text
+*.[wW][aA][vV] filter=lfs diff=lfs merge=lfs -text
