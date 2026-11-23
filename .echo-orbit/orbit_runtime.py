@@ -55,6 +55,7 @@ class CameraState:
         self.bodies = orbit_positions(0.)
         self.camera = (0., 0., 1., 0.)
         self.pointer = (.5, .5)
+        self.pointer_velocity = (0., 0.)
         self.focus_anchor = self.pointer
         self.intent = .0
         self.motion = .0
@@ -73,6 +74,7 @@ class CameraState:
         self.arrival_origin = (0., 0., 0.)
         self.energy = np.zeros(4, dtype=np.float32)
         self.cursor_trail = deque(maxlen=27)
+        self.burst = None
 
     def center_uv(self, body_id):
         x, y, _, _ = self.bodies[body_id]
@@ -103,6 +105,7 @@ class CameraState:
         self.hover_time = self.away_time = 0.0
         self.timelock = self.last + .60
         self.cursor_trail.clear()
+        self.burst = None
 
     def click(self, position, inside=True):
         if not inside:
@@ -110,6 +113,8 @@ class CameraState:
         if self.entered:
             if screen_distance(position, RETURN) < .051:
                 self.leave()
+            else:
+                self.burst = ((position[0] - .5) * ASPECT, position[1] - .5, self.last)
             return
         target = self.focus if self.focus >= 0 else self.hit(position)
         if target >= 0:
@@ -160,8 +165,13 @@ class CameraState:
             self.shown = -1
         speed = min(1., screen_distance(self.pointer, position) * 16.) if inside else 0.
         self.motion = approach(self.motion, speed, dt, 18. if speed > self.motion else 3.8)
+        previous_pointer = self.pointer
         if inside:
             self.pointer = tuple(approach(before, after, dt, 12.) for before, after in zip(self.pointer, position))
+        velocity = ((self.pointer[0] - previous_pointer[0]) * ASPECT / max(.005, dt),
+                    (self.pointer[1] - previous_pointer[1]) / max(.005, dt))
+        self.pointer_velocity = tuple(approach(before, after, dt, 9.) for before, after in
+                                      zip(self.pointer_velocity, velocity))
         in_return = self.entered and inside and screen_distance(position, RETURN) < .051
         self.intent = approach(self.intent, float(self.entered and inside and not in_return), dt, 7.)
         self.back_glow = approach(self.back_glow, float(in_return), dt, 12.)
@@ -171,6 +181,8 @@ class CameraState:
             self.cursor_trail.append((*point, now))
         while self.cursor_trail and now - self.cursor_trail[0][2] > 1.12:
             self.cursor_trail.popleft()
+        if self.burst and now - self.burst[2] > 1.25:
+            self.burst = None
         self.update_label(inside)
 
     def update_label(self, inside):
@@ -220,10 +232,10 @@ class ParticleField:
         self.stream = rng.random((6, 16400), dtype=np.float32)
         self.scatter = rng.normal(0, 1, 16400).astype(np.float32)
         self.sky = rng.random((4, 1300), dtype=np.float32)
-        count = 21600
+        count = 35200
         self.random = rng.random((7, count))
         self.lane = rng.normal(0, 1, count)
-        self.spark = .08 + .44 * self.random[4] ** 4.7
+        self.spark = .10 + .61 * self.random[4] ** 4.7
         dots = rng.random((6, 23000), dtype=np.float32)
         height = 2 * dots[0] - 1
         arc = 2 * np.pi * dots[1]
@@ -275,35 +287,57 @@ class ParticleField:
         r, azimuth, speed, drift, _, choice, height = self.random
         i = state.shown
         bass, mid, high, event = state.energy
-        lean = (.50, .61, .51, .51, .56)[i]
-        thickness = (.19, .15, .27, .22, .18)[i]
-        curl = (3.58, 4.4, 3.05, 3.42, 4.1)[i]
-        direction = (1., -1., 1., -1., 1.)[i]
-        phase = (r + state.flow_time * (.078 + .10 * speed)) % 1.
-        lane = np.floor(azimuth * 4.) * np.pi * .5
-        wave = phase * curl + .18 * state.flow_time * direction
-        phase_noise = .26 * self.lane + .21 * np.sin(phase * 10. + lane + state.flow_time)
-        theta = lane + direction * (wave + phase_noise)
-        radius = .12 + phase * (.94 + .15 * drift + .21 * bass)
-        radius += .047 * np.sin(wave * 2.6) + .07 * self.lane * drift
-        strip = radius * np.cos(theta)
-        plume = radius * np.sin(theta) * thickness
-        plume += .037 * self.lane * (.48 + phase) + .027 * np.sin(strip * 14. + height * 5.)
-        x = strip * cos(lean) - plume * sin(lean) + .08
-        y = strip * sin(lean) + plume * cos(lean) - .02
-        tip = lane + direction * (curl + .18 * state.flow_time + .26 * self.lane)
-        dx = .08 + np.cos(tip) * cos(lean) - np.sin(tip) * thickness * sin(lean)
-        dy = -.02 + np.cos(tip) * sin(lean) + np.sin(tip) * thickness * cos(lean)
+        time = state.flow_time
+        phase = (r + time * (.051 + .088 * speed)) % 1.
+        side = np.where(azimuth >= .5, 1., -1.)
+        branch = (azimuth * 2.) % 1. - .5
+        spread = self.lane * (.45 + phase)
+        if i == 0:  # Two opposed prominences coil out from the Sun.
+            theta = 2. * np.pi * azimuth + side * (2.7 * phase + .18 * time)
+            radius = .27 + phase * (.31 + .16 * drift + .19 * bass)
+            radius += .056 * np.sin(3. * theta + time) + .030 * spread
+            strip, plume = radius * np.cos(theta) * 1.47, radius * np.sin(theta) * .73
+        elif i == 1:  # A short seam feeds a narrow downstream wake.
+            strip = -.46 + phase * (1.38 + .32 * bass)
+            plume = .11 * np.sin(3. * strip + time * .47) + .062 * spread
+            plume += branch * (.08 + .22 * phase)
+        elif i == 2:  # Venus throws two broad, curved veils into opposite corners.
+            theta = .82 + 2.5 * phase + .14 * time + .19 * spread + branch * .59
+            radius = .17 + phase * (.78 + .22 * bass + .19 * drift)
+            strip = side * radius * (np.cos(theta) - .24)
+            plume = side * radius * np.sin(theta) * .56 + .049 * spread
+        elif i == 3:  # A layered, ribbon-like aurora opens diagonally around Earth.
+            strip = (phase - .5) * (1.86 + .35 * bass)
+            plume = .15 * np.sin(strip * 5.8 - time * .48) + side * (.081 + .060 * phase)
+            plume += .066 * spread + branch * .21
+        else:  # Dust leaves Mars in two forks with different flight speeds.
+            strip = -.55 + phase * (1.51 + .27 * side + .22 * bass)
+            plume = side * (.055 + .22 * phase) + .085 * spread
+            plume += .076 * np.sin(5.6 * strip + time * .76 + branch)
+        lean = (.38, .39, .36, .64, -.48)[i]
+        x = strip * cos(lean) - plume * sin(lean)
+        y = strip * sin(lean) + plume * cos(lean)
         mx, my = (state.pointer[0] - .5) * ASPECT, state.pointer[1] - .5
-        local = np.exp(-((x - mx) ** 2 + (y - my) ** 2) / .21)
-        drag = state.intent * (.33 + .67 * state.motion)
-        pull = drag * local * (phase ** 1.45) * (.32 + .64 * choice)
-        x += (mx - dx) * pull
-        y += (my - dy) * pull
+        vx, vy = state.pointer_velocity
+        dx, dy = mx - x, my - y
+        local = np.exp(-(dx * dx + dy * dy) / .23)
+        pull = state.intent * local * (.53 + .42 * state.motion) * (.30 + .65 * phase)
+        x += dx * pull + (-dy * .19 + np.tanh(vx) * .25) * pull * state.motion
+        y += dy * pull + (dx * .19 + np.tanh(vy) * .25) * pull * state.motion
         life = np.sin(np.pi * phase) ** .64
         a = self.spark * life * state.camera[3] ** 1.26
-        a *= (.82 + .77 * bass + (1.05 * event + .80 * high) * (choice > .65))
-        a *= .50 + .50 * np.sin(theta * 1.7 + height * 2.1) ** 2
+        a *= (.93 + .82 * bass + (1.17 * event + .86 * high) * (choice > .65))
+        a *= (.55 + .45 * np.sin(strip * 8.1 + height * 3.0 + time) ** 2) * (1. + .62 * pull)
+        if state.burst:
+            bx, by, began = state.burst
+            age = state.last - began
+            rx, ry = x - bx, y - by
+            distance = np.hypot(rx, ry)
+            shake = np.exp(-((distance - .53 * age) / .092) ** 2) * np.sin(np.pi * age / 1.25)
+            shove = .21 * shake / (distance + .062)
+            x += rx * shove
+            y += ry * shove
+            a *= 1. + 1.3 * shake
         return x, y, a, height
 
     def arrival_dust(self, state):
@@ -335,7 +369,7 @@ class ParticleField:
         bass, mid, high, attack = state.energy
         age = (life + state.flow_time * (.18 + .16 * seed)) % 1.
         fan = np.floor(start * 17) / 17 * 2 * np.pi + .21 * (hue - .5)
-        strength = .32 + 1.1 * attack + .38 * high
+        strength = .44 + 1.25 * attack + .47 * high
         align = .19 + .16 * (state.shown % 3)
         cx, cy = (state.pointer[0] - .5) * ASPECT, state.pointer[1] - .5
         local = np.exp(-((.35 * np.cos(fan) - cx) ** 2 + (.35 * np.sin(fan) - cy) ** 2) / .16)
@@ -365,7 +399,7 @@ class ParticleField:
         x = trail[:, :1] + self.trail_noise[0] * spread + .052 * age
         y = trail[:, 1:2] + self.trail_noise[1] * spread + .015 * np.sin(12 * age)
         fade = np.maximum(0., 1 - age / 1.12) ** 1.3
-        a = (.18 + .71 * self.trail_tone ** 2.1) * fade * (.65 + .55 * state.energy[2])
+        a = (.23 + .85 * self.trail_tone ** 2.1) * fade * (.69 + .60 * state.energy[2])
         colors = np.broadcast_to(np.where(self.trail_tone > .62, 2, 1), a.shape)
         return [(x.ravel(), y.ravel(), a.ravel(), colors.ravel())]
 
@@ -414,6 +448,7 @@ class Atlas:
         self.sources = [op(ROOT + 'audio_' + name) for name in SCENES]
         self.envelopes = [op(ROOT + 'volume_' + name) for name in SCENES]
         self.cloud = op(ROOT + 'particles')
+        self.feedback = op(ROOT + 'feedback_material')
         self.cloud.lock = True
         self.last_raster = 0.0
         self.hover_origin = None
@@ -428,6 +463,10 @@ class Atlas:
         for pars, values in zip(self.uniform_parameters, self.state.uniforms()):
             for par, value in zip(pars, values):
                 par.val = float(value)
+        if self.feedback is not None:
+            bass, mid, _, attack = self.state.energy
+            self.feedback.par.Drive = float(.16 + .89 * bass + .32 * attack)
+            self.feedback.par.Detail = float(.50 + .96 * mid)
 
     def audio(self):
         target = self.state.focus + 1 if self.state.entered else 0

@@ -6,6 +6,8 @@ import { pathToFileURL } from 'node:url';
 
 const workspace = process.cwd();
 const work = path.join(workspace, '.echo-orbit');
+const scratch = path.join(work,'.venus-build','interactive','credits');
+await fs.mkdir(scratch,{recursive:true});
 const runtime = 'C:/Program Files/WindowsApps/OpenAI.CodexPrimaryRuntime.v26-1119-907-0_26.1119.907.0_x64__3k8sg7r9htsxt/dependencies';
 const skill = 'C:/Users/toki/.codex/plugins/cache/openai-primary-runtime/presentations/26.1119.11507/skills/presentations';
 const modules = path.join(runtime, 'node/node_modules');
@@ -57,9 +59,11 @@ for (const [i, ref] of visual.entries()) {
   type('参考作者 '+i, ref.artist, 251, y+45, 272, 31, 18, subtle);
   type('参考用途 '+i, ref.use, 251, y+82, 278, 29, 17, subtle);
 }
-type('音画构思参考', '音画笔记  Vivi S《TD 宇宙回响》', 65, 516, 450, 36, 17, lavender, false,
+type('音乐星球教程', '天体材质  mrxccc《音乐星球节奏互动》', 65, 500, 472, 30, 17, lavender, false,
+  'https://www.bilibili.com/video/BV1pkRiYpEZh/');
+type('音画构思参考', '音画笔记  Vivi S《TD 宇宙回响》', 65, 532, 472, 30, 17, lavender, false,
   'https://xhslink.cn/o/7NuVmtgTRWx');
-type('首页参考', '首页构图  用户提供的粒子引力环录屏', 65, 552, 450, 36, 17, lavender);
+type('首页参考', '首页构图  用户提供的暗色密轨星图和录屏', 65, 564, 472, 30, 17, lavender);
 
 for (const [i, [scene, title, range, id]] of tracks.entries()) {
   const y = 221 + i * 54;
@@ -74,6 +78,7 @@ type('使用说明', '音乐按 CC BY 4.0 署名。特写星云节选自《宇�
 
 slide.speakerNotes.text = [
   ...visual.map(ref=>`${ref.title}，${ref.artist}，小红书。${ref.url}。图截自用户提供的录屏。`),
+  '天体生成方法参考 mrxccc《TouchDesigner 教程｜音乐星球节奏互动》。在 TouchDesigner 重建反馈、位移和颜色映射节点。https://www.bilibili.com/video/BV1pkRiYpEZh/',
   '音画构思参考，Vivi S《TD 宇宙回响》。https://xhslink.cn/o/7NuVmtgTRWx',
   '天体特写中的星云节选自一粒六元《TD 星际环游 003／宇宙诞生》，取自用户提供的录屏。保留核心星云片段，按天体调色，并叠加实时颗粒。',
   '首页的长条尘带、太阳粒子弧和特写中的粒子球参考用户提供的图片与录屏。',
@@ -83,11 +88,11 @@ slide.speakerNotes.text = [
 ].join('\n');
 
 const preview = await presentation.export({slide,format:'png',scale:1});
-await fs.writeFile(path.join(work, 'credits-preview.png'), new Uint8Array(await preview.arrayBuffer()));
-const candidate = path.join(work, 'credits-candidate.pptx');
+await fs.writeFile(path.join(scratch, 'credits-preview.png'), new Uint8Array(await preview.arrayBuffer()));
+const candidate = path.join(scratch, 'credits-candidate.pptx');
 await (await PresentationFile.exportPptx(presentation)).save(candidate);
 const filename = '深空回声·素材来源.pptx';
-const validationDir = await fs.mkdtemp(path.join(work, 'sources-validated-'));
+const validationDir = await fs.mkdtemp(path.join(scratch, 'sources-validated-'));
 const stagedDeck = path.join(validationDir, filename);
 const link = fs.link;
 fs.link = async (from, to) => {
@@ -112,7 +117,7 @@ result = await finalizePresentation({
 } finally {
   fs.link = link;
 }
-const output = path.join(workspace, filename);
+const output = path.join(process.argv.includes('--draft') ? scratch : workspace, filename);
 await fs.copyFile(result.finalPath, output, process.argv.includes('--replace') ? 0 : constants.COPYFILE_EXCL);
 if (createHash('sha256').update(await fs.readFile(output)).digest('hex') !== result.finalSha256) {
   throw new Error('Delivered slide differs from the validated file');

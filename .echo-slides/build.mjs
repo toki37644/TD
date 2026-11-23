@@ -5,8 +5,10 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const base = process.cwd();
-const tmp = path.join(base, '.echo-slides');
-const work = path.join(base, '.echo-work');
+const qa = path.join(base, '.echo-orbit', '.venus-build', 'interactive');
+const tmp = path.join(qa, 'slides');
+const stock = path.join(base, '.echo-orbit', 'stock');
+await fs.mkdir(tmp,{recursive:true});
 const runtime = 'C:/Program Files/WindowsApps/OpenAI.CodexPrimaryRuntime.v26-1119-907-0_26.1119.907.0_x64__3k8sg7r9htsxt/dependencies';
 const skill = 'C:/Users/toki/.codex/plugins/cache/openai-primary-runtime/presentations/26.1119.11507/skills/presentations';
 process.env.RUNTIME_NODE_MODULES = path.join(runtime,'node/node_modules');
@@ -27,13 +29,14 @@ async function img(s,file,alt,x,y,w,h,fit='cover'){
 }
 function header(s,title,color=C.ink){text(s,'页标题',title,66,42,1150,68,49,color,true);}
 function note(s,lines){s.speakerNotes.text=lines;}
-const cover=slide();
-await img(cover,path.join(work,'deep-echo-visual-active.png'),'青色星尘与琥珀色航线',0,0,1280,720);
+const cap=(name)=>path.join(qa,'frames',name+'.png');
+const cover=slide('#020308');
+await img(cover,cap('0_overview'),'五颗天体与密集轨道的总览',414,71,866,576,'contain');
 text(cover,'课题','星际探索',65,163,565,60,39,C.mint);
 text(cover,'作品标题','深空回声',57,225,577,128,103,C.ink,true);
-text(cover,'简介','移动鼠标，转动星球，改变光影。\n扫描粒子星云，为航线谱曲。',66,408,520,114,28,C.ink);
+text(cover,'简介','从轨道总览进入五颗天体。\n让音乐和指针带动星云。',66,408,495,114,28,C.ink);
 text(cover,'制作工具','TouchDesigner 交互视听作品',67,636,475,35,20,C.soft);
-note(cover,'移动鼠标可以转动星球并改变光照。观众在粒子星云中扫描三个信标，再按自己的顺序组成航线和旋律。封面为作品 GLSL 着色器输出。');
+note(cover,'封面使用 TouchDesigner 总览实机截图。四颗行星按水星、金星、地球、火星的顺序围绕太阳。');
 
 if (process.argv.includes('--cover')) {
   const preview=await deck.export({slide:cover,format:'png',scale:1});
@@ -44,25 +47,24 @@ if (process.argv.includes('--cover')) {
 const refs=slide(C.paper);
 header(refs,'灵感板',C.black);
 const references=[
-  {file:'nebula.jpg',title:'船底座星云',caption:'明暗交错的尘埃边缘启发了画面里\n斜穿星场的青色雾带与星尘粒子。',x:66,w:365},
-  {file:'echo.jpg',title:'麒麟座 V838 的光回声',caption:'由中心向外展开的光晕，启发了\n松开鼠标时扩散的扫描环。',x:456,w:365},
-  {file:'map.jpg',title:'半人马座星图',caption:'用点标出星体，用细线连接位置。\n在作品里，点之间的连线由观众决定。',x:846,w:365}];
+  {file:path.join(stock,'star-chart.jpg'),title:'暗色密轨星图',caption:'以太阳为视觉中心。\n轨道的疏密交代距离与层次。',x:66,w:365},
+  {file:path.join(base,'.echo-orbit','reference-flow.jpg'),title:'实时流体色束',caption:'明亮色束沿形态交叠。\n不同宽度的色带形成卷曲和余光。',x:456,w:365},
+  {file:path.join(base,'.echo-orbit','reference-galaxy.jpg'),title:'星云与星尘',caption:'丝状星云构成底层。\n细颗粒与少量亮点补足深度。',x:846,w:365}];
 for(const r of references){
-  await img(refs,path.join(tmp,r.file),r.title,r.x,153,r.w,290,'cover');
+  await img(refs,r.file,r.title,r.x,153,r.w,290,'cover');
   text(refs,r.title,r.title,r.x,465,r.w,50,30,C.black,true);
   text(refs,r.title+'注',r.caption,r.x,522,r.w,85,21,C.muted);
 }
-note(refs,'左图为韦布望远镜的 NIRCam 图片 Cosmic Cliffs。图片署名 NASA, ESA, CSA, STScI。https://esawebb.org/images/weic2205a/\n中图为哈勃望远镜的 V838 Mon 光回声。图片署名 NASA, ESA and H. Bond (STScI)。https://esahubble.org/images/heic0617b/\n右图为半人马座星图。图片署名 ESO/IAU and Sky & Telescope。https://www.eso.org/public/images/eso1629g/\n三张参考图均为原始资料的局部裁切。');
+note(refs,'星图为用户提供的构图参考。色束参考 BIBIMOO_任任的流体录屏。星云参考一粒六元《宇宙诞生》。音乐驱动成形参考 mrxccc 的《音乐星球节奏互动》。完整链接与音乐署名见独立素材来源。');
 
-const cap=(name)=>path.join(work,'captures',name+'.png');
 const idea=slide();
 header(idea,'作品简介');
-text(idea,'作品思路标题','转动星球，\n再为航线谱曲',65,156,460,161,55,C.ink,true);
-text(idea,'作品思路','鼠标移动时，星球转动，光照改变。\n观众在粒子星云中扫描三个信标，\n按自己的顺序连线并听见旋律。',67,351,470,130,26,C.soft);
-text(idea,'作品力学','每个信标有固定音高，\n两种走法会奏出不同的旋律。',67,515,475,85,24,C.mint);
-await img(idea,cap('07_route'),'项目运行画面，已完成的航线',551,169,665,374,'contain');
-text(idea,'图注','完成一次探索后的星图',551,554,665,38,18,C.soft);
-note(idea,'第一个反馈来自鼠标移动，观众可以立刻看到星球的地形、明暗分界和星尘发生变化。接着用扫描环找出信标。星图的连线顺序同时是谱序。');
+text(idea,'作品思路标题','从星图进入\n五颗天体',65,156,460,161,55,C.ink,true);
+text(idea,'作品思路','悬停时，镜头沿轨道跟拍。\n点击后，天体经粒子聚散进入近景，\n并切换到专属音乐。',67,351,470,130,26,C.soft);
+text(idea,'作品力学','音乐牵动色束与星云。\n指针改变粒子散开的方向。',67,515,475,85,24,C.mint);
+await img(idea,cap('interaction-403'),'金星锁定近景',551,169,665,374,'contain');
+text(idea,'图注','金星近景',551,554,665,38,18,C.soft);
+note(idea,'总览、太阳和四颗行星各有一段音乐。近景鼠标移动会吸引粒子，点击近景可以散开局部粒子，Esc 或返回图标回到总览。');
 
 function node(s,name,value,x,y,w,h,color=C.mint){
   const a=s.shapes.add({geometry:'rect',name,position:{left:x,top:y,width:w,height:h},fill:'#10262D',line:{fill:color,width:1.4}});
@@ -74,90 +76,88 @@ function edge(s,a,b,fromSide='right',toSide='left',kind='straight',color=C.mint)
 }
 const vis=slide();
 header(vis,'视觉方案与节点图');
-text(vis,'视觉对象','多层噪声和星尘粒子叠出星云。\nGLSL 根据鼠标坐标改变球体朝向和受光方向。',67,125,1150,92,28,C.soft);
-const pointer=node(vis,'实时参数','uClockPointer\n时间与鼠标坐标',344,237,200,70,C.amber);
-const shSrc=node(vis,'着色代码','nebula_pixel\n像素着色代码',66,345,210,84);
-const sh=node(vis,'场景渲染','starfield\nGLSL TOP',344,345,200,84);
-const hud=node(vis,'界面图层','hud_embedded\n内嵌界面文字',344,500,200,82);
-const over=node(vis,'合成','instrument_overlay\nOver TOP',660,345,251,84);
-const out=node(vis,'输出','final_image\n最终图像',1004,345,209,84);
-edge(vis,pointer,sh,'bottom','top','straight',C.amber);edge(vis,shSrc,sh);edge(vis,sh,over);edge(vis,hud,over,'right','bottom','elbow');edge(vis,over,out);
-text(vis,'像素实现','扫描波还会照亮经过的球面区域。星球、波纹、信标和航线都由着色器绘制。',67,611,1140,51,23,C.soft);
-note(vis,'nebula_pixel 是 Text DAT。starfield 叠加多层噪声和星尘粒子，按鼠标坐标旋转球面采样空间，控制入射光、大气亮边和表面反射，并用距离函数绘制波纹、信标与航线。扫描波经过球面时带来短暂的琥珀色照明。hud_embedded 为锁定的 Null TOP，instrument_overlay 把透明界面叠加到星图上，送入 final_image。');
+text(vis,'视觉对象','同一套实时色束用于两种画法。\n总览显示球面自转，近景显示平面反馈与分层星云。',67,125,1150,92,28,C.soft);
+const pointer=node(vis,'实时参数','orbit_engine\n轨道、镜头与频段',344,237,200,70,C.amber);
+const shSrc=node(vis,'色束输入','feedback_material\n反馈、位移与色带',66,345,210,84);
+const sh=node(vis,'场景渲染','solar_atlas\nGLSL Multi TOP',344,345,200,84);
+const hud=node(vis,'星云图层','particles / nebula\n实时粒子与星云素材',66,490,210,82);
+const over=node(vis,'画法切换','球面自转 / 平面近景\n内含粒子聚散和悬停名称',660,345,251,84);
+const out=node(vis,'输出','out_image\n最终图像',1004,345,209,84);
+edge(vis,pointer,sh,'bottom','top','straight',C.amber);edge(vis,shSrc,sh);edge(vis,sh,over);edge(vis,hud,sh,'right','bottom','elbow');edge(vis,over,out);
+text(vis,'像素实现','太阳保留放射日冕。四颗行星沿用各自的主色和冷暖关系。',67,611,1140,51,23,C.soft);
+note(vis,'Feedback Edge、Noise、Slope、Displace 和 Lookup 生成平面反馈色束。solar_atlas 在总览把色束映射到行星球面，在锁定近景使用平面色束。particles 与 nebula_footage 提供实时颗粒和分层雾带。画面逻辑和画法切换均发生在 solar_atlas 内。');
 
 const planet=slide();
-header(planet,'星球旋转与光影变化');
-text(planet,'操控说明','横移改变星球的左右朝向，纵移改变俯仰。光照方向随指针移动。',67,125,1150,68,27,C.soft);
+header(planet,'总览与天体近景');
+text(planet,'操控说明','总览看公转和自转。悬停时跟拍，点击后进入平面色束与星云。',67,125,1150,68,27,C.soft);
 const planetViews=[
-  {file:'planet-left',title:'指针移至左下',caption:'左侧受光，右半球进入阴影。'},
-  {file:'planet-right',title:'指针移至右上',caption:'亮面向上移动，地表露出不同纹理。'},
-  {file:'planet-scan',title:'扫描波经过',caption:'扫过的球面区域短暂泛起暖光。'},
+  {file:'interaction-75',title:'轨道总览',caption:'四颗行星由近到远围绕太阳。'},
+  {file:'interaction-170',title:'悬停跟拍',caption:'镜头拉近，名称融进画面。'},
+  {file:'interaction-328',title:'平面近景',caption:'音乐驱动色束折叠和星云流动。'},
 ];
-const showScan=await fs.access(path.join(tmp,'planet-scan.png')).then(()=>true,()=>false);
-const views=showScan?planetViews:planetViews.slice(0,2);
-for(const [i,view] of views.entries()){
-  const width=showScan?365:530;
-  const height=showScan?274:398;
-  const x=66+i*(showScan?390:618);
-  const y=showScan?203:186;
-  await img(planet,path.join(tmp,view.file+'.png'),view.title+'的实机画面',x,y,width,height,'contain');
+for(const [i,view] of planetViews.entries()){
+  const width=365;
+  const height=274;
+  const x=66+i*390;
+  const y=203;
+  await img(planet,cap(view.file),view.title+'的实机画面',x,y,width,height,'contain');
   text(planet,view.title,view.title,x,y+height+11,width,42,27,C.mint,true);
-  if(showScan) text(planet,view.title+'说明',view.caption,x,y+height+60,width,62,20,C.soft);
+  text(planet,view.title+'说明',view.caption,x,y+height+60,width,62,20,C.soft);
 }
-note(planet,'左、右的对比图取自相同的项目时间。鼠标的水平坐标对应绕 Y 轴旋转，垂直坐标对应绕 X 轴旋转。鼠标还改变入射光方向，因此地表亮度、昼夜交界和大气的亮边也随之移动。扫描波可短暂给经过的球面加一层暖光。');
+note(planet,'所有图片均为 TouchDesigner 原生渲染。近景分别表现太阳的盘旋日珥、水星的窄尾流、金星的双向弯曲尘幕、地球的极光带和火星的分叉尘流。');
 
 const interact=slide(C.paper);
 header(interact,'交互方案',C.black);
 const acts=[
- {x:66,t:'旋转星球',p:'星球和光影随指针改变。\n指针附近的星尘也会偏移。',f:'planet-right',s:'移动鼠标'},
- {x:456,t:'扫描信标',p:'按住左键再松开。波纹经过信标时，\n信标显现，并留在星图上。',f:'scan',s:'左键长按并松开'},
- {x:846,t:'把航线弹出来',p:'依次短点三个信标，试听并连线。\n第三次选点后，探针出发，旋律回放。',f:'route',s:'依次短点信标'}];
+ {x:66,t:'沿轨道跟拍',p:'名称只在悬停时出现。\n移开后，名称以粒子消散。',f:'interaction-170',s:'悬停天体'},
+ {x:456,t:'聚散进入近景',p:'天体先散开，再聚合。\n镜头锁定后播放专属音乐。',f:'interaction-248',s:'点击天体'},
+ {x:846,t:'牵引并散开星云',p:'指针带走附近尘粒。\n点击会拨开局部星云。',f:'interaction-561',s:'移动或点击近景'}];
 for(const a of acts){
- await img(interact,path.join(tmp,a.f+'.png'),a.t+'画面细节',a.x,149,365,260,'cover');
+ await img(interact,cap(a.f),a.t+'画面细节',a.x,149,365,260,'cover');
  text(interact,a.s,a.s,a.x,421,365,32,19,C.muted);
  text(interact,a.t,a.t,a.x,471,365,50,31,C.black,true);
  text(interact,a.t+'说明',a.p,a.x,535,365,80,20,C.muted);
 }
-note(interact,'移动鼠标即可转动星球并改变光照。长按触发阈值为 0.32 秒，松开后发射扫描波。短点已发现的信标可重复试听，同一信标在航线中只记录一次。重置可点击右下角按钮或在操作窗口按 R。');
+note(interact,'鼠标位置改变粒子的牵引方向，移动速度决定拖拽力度。近景点击会产生径向散开。按 Esc 或画面左上方的箭头返回总览。');
 
 const logic=slide();
 header(logic,'交互与声音节点图');
-text(logic,'实现说明','鼠标位置驱动星球的旋转与光照。点击信标同时写入航线并触发声音包络。',67,126,1170,53,26,C.soft);
+text(logic,'实现说明','点击切换场景与音轨。实时频段和指针共同驱动粒子与色束。',67,126,1170,53,26,C.soft);
 const pane=node(logic,'操作面板','viewport\n鼠标位置与按键',64,291,187,85);
-const ev=node(logic,'按键边沿','button_edges\n按下与松开事件',289,291,201,85);
-const rt=node(logic,'交互状态','runtime\n读指针、更新探索状态',568,291,215,85,C.amber);
-const pic=node(logic,'视觉响应','starfield\n星球、光影、波纹与航线',937,291,271,85);
-const timer=node(logic,'逐帧时钟','frame_clock\n逐帧更新时间',568,189,215,66,C.amber);
+const ev=node(logic,'按键边沿','left_click / return_key\n进入、散逸、返回',289,291,201,85);
+const rt=node(logic,'交互状态','orbit_engine\n镜头、指针与音频分析',568,291,215,85,C.amber);
+const pic=node(logic,'视觉响应','solar_atlas\n星球、散逸与星云',937,291,271,85);
+const timer=node(logic,'逐帧时钟','clock\n逐帧更新',568,189,215,66,C.amber);
 edge(logic,pane,ev);edge(logic,ev,rt);edge(logic,rt,pic);edge(logic,timer,rt,'bottom','top','straight',C.amber);
-const osc=node(logic,'三个振荡器','tone_C4 / E4 / G4\n三路正弦振荡器',62,521,246,80,C.amber);
-const gain=node(logic,'独立包络','envelope_C4 / E4 / G4\n逐路调节音量',370,521,251,80,C.amber);
-const mix=node(logic,'音频混合','motif_mix\n合成三个音',704,521,188,80,C.amber);
-const dev=node(logic,'音频输出','speaker_output\n音频设备输出',984,521,225,80,C.amber);
-edge(logic,pic,gain,'bottom','top','elbow',C.amber);
-text(logic,'传递的参数','uMusic 声音包络',783,423,270,38,19,C.amber);
+const osc=node(logic,'六段音频','audio_*\n总览与五颗天体',62,521,246,80,C.amber);
+const gain=node(logic,'独立包络','volume_*\n逐路淡入淡出',370,521,251,80,C.amber);
+const mix=node(logic,'音频混合','music_mix\n合成立体声',704,521,188,80,C.amber);
+const dev=node(logic,'音频输出','audio_device\n音频设备输出',984,521,225,80,C.amber);
+edge(logic,rt,gain,'bottom','top','elbow',C.amber);
+text(logic,'传递的参数','切换与交叉淡入',624,423,270,38,19,C.amber);
 edge(logic,osc,gain,'right','left','straight',C.amber);edge(logic,gain,mix,'right','left','straight',C.amber);edge(logic,mix,dev,'right','left','straight',C.amber);
-text(logic,'声音标注','信标 A 对应 C4，B 对应 E4，C 对应 G4。三音按观众选择的顺序回放。',65,629,1170,44,22,C.soft);
-note(logic,'viewport 提供鼠标 u/v 和按键。button_edges 捕捉按键的变化，frame_clock 逐帧触发 runtime 读取鼠标位置并更新探索状态。runtime 向 GLSL 写入 uClockPointer 和 uMusic。三个 Math CHOP 分别读取 uMusic 的对应分量，控制三个正弦振荡器的音量。混音后由 Audio Device Out CHOP 播放。');
+text(logic,'声音标注','低频推动色束伸缩，中频带动雾流，高频和瞬态提亮粒子。',65,629,1170,44,22,C.soft);
+note(logic,'orbit_engine 读取同一条送入音频输出的音源，分析低频、中频、高频及瞬态强度。坐标、速度和点击状态进入粒子场。音轨在场景之间交叉淡入淡出。');
 
 const demo=slide(C.paper);
 header(demo,'30 秒现场演示',C.black);
-text(demo,'演示重点','星球光影和两种旋律',67,129,634,53,30,C.muted);
+text(demo,'演示重点','总览、平面色束与指针星云',67,129,634,53,30,C.muted);
 const cue=[
-  ['0–7 秒','左右、上下移动鼠标，观察星球。\n在星云中央长按后松开，发出扫描波。'],
-  ['7–15 秒','信标显现后依次点 A、B、C。\n听 C4、E4、G4 逐级升高。'],
-  ['15–22 秒','点击右下角重置。\n回到星云中央，再扫描一次。'],
-  ['22–30 秒','按 C、A、B 的顺序点击。\n听 G4 落到 C4，再回到 E4。']];
+  ['0–7 秒','观察总览中的公转与自转。\n将鼠标停在金星上看镜头跟拍。'],
+  ['7–15 秒','点击进入金星近景。\n看粒子聚合，听音轨切换。'],
+  ['15–22 秒','左右移动指针，拉动两侧星云。\n点击星云观察局部粒子散开。'],
+  ['22–30 秒','按 Esc 回总览，再进入地球。\n对比极光带与金星尘幕。']];
 for(let i=0;i<cue.length;i++){
   const y=213+i*96;
   text(demo,'时间 '+i,cue[i][0],68,y,153,68,28,C.black,true);
   text(demo,'操作 '+i,cue[i][1],235,y,461,68,24,C.black);
 }
-await img(demo,path.join(tmp,'ascending.png'),'A、B、C 航线与亮起的 A 信标',717,159,494,213,'contain');
-text(demo,'第一轮截图图注','第一轮  /  A、B、C',717,377,494,30,20,C.muted);
-await img(demo,path.join(tmp,'descending.png'),'C、A、B 航线与亮起的 C 信标',717,419,494,213,'contain');
-text(demo,'第二轮截图图注','第二轮  /  C、A、B',717,637,494,30,20,C.muted);
-text(demo,'讲解提示','回放时，正在发声的信标会泛起光晕。',68,620,633,47,21,C.muted);
-note(demo,'先以左右和上下的鼠标动作展示星球纹理和亮暗变化，接着扫描信标。两次试听时可以保持安静，让大家留意路线和信标发光的顺序。');
+await img(demo,cap('interaction-646'),'指针牵引下的金星尘幕',717,159,494,213,'contain');
+text(demo,'第一轮截图图注','金星尘幕',717,377,494,30,20,C.muted);
+await img(demo,cap('4_earth'),'地球近景的极光带',717,419,494,213,'contain');
+text(demo,'第二轮截图图注','地球极光带',717,637,494,30,20,C.muted);
+text(demo,'讲解提示','留意每次切换后的音乐和粒子走向。',68,620,633,47,21,C.muted);
+note(demo,'可以用同一组左右划动对比金星和地球的粒子轨迹。');
 
 for(const [i,s] of deck.slides.items.entries()){
   const preview=await deck.export({slide:s,format:'png',scale:1});
@@ -183,7 +183,7 @@ if(process.argv.includes('--validate')){
   } finally {
     fs.link=link;
   }
-  const dest=path.join(base,filename);
+  const dest=path.join(process.argv.includes('--draft') ? tmp : base,filename);
   if(process.argv.includes('--replace')) await fs.rename(receipt.finalPath,dest);
   else await fs.copyFile(receipt.finalPath,dest,constants.COPYFILE_EXCL);
   const hash=createHash('sha256').update(await fs.readFile(dest)).digest('hex');

@@ -5,6 +5,7 @@ Reference: mrxccc, https://www.bilibili.com/video/BV1pkRiYpEZh/
 10:31 color lookup, 15:03 edge treatment, 19:07 audio modulation.
 """
 
+from functools import partial
 from pathlib import Path
 
 
@@ -27,42 +28,30 @@ PALETTE = (
 )
 
 
-def build(audio_file, *, rotation_source=None):
-    scene = op('/project1')
+def place(node, x, y):
+    node.nodeX, node.nodeY = x, y
+    return node
 
-    def place(node, x, y):
-        node.nodeX, node.nodeY = x, y
-        return node
 
-    def make(kind, name, x, y, *inputs, **settings):
-        node = place(scene.create(kind, name), x, y)
-        for index, source in enumerate(inputs):
-            node.inputConnectors[index].connect(source.outputConnectors[0])
-        for parameter, value in settings.items():
-            field = node.par[parameter]
-            if field is None:
-                raise AttributeError(f'{node.path} has no {parameter} parameter')
-            if isinstance(value, tuple) and value[0] == 'expr':
-                field.expr = value[1]
-            else:
-                field.val = value
-        return node
+def make_node(scene, kind, name, x, y, *inputs, **settings):
+    node = place(scene.create(kind, name), x, y)
+    for index, source in enumerate(inputs):
+        node.inputConnectors[index].connect(source.outputConnectors[0])
+    for parameter, value in settings.items():
+        field = node.par[parameter]
+        if field is None:
+            raise AttributeError(f'{node.path} has no {parameter} parameter')
+        if isinstance(value, tuple) and value[0] == 'expr':
+            field.expr = value[1]
+        else:
+            field.val = value
+    return node
 
-    size = dict(outputresolution='custom', resolutionw=WIDTH, resolutionh=HEIGHT)
-    scene.vfs.addFile(str(audio_file), overrideName='venus-demo.mp3')
-    audio = make(audiofileinCHOP, 'audiofilein1', -1080, -430,
-                 file='vfs:/project1:venus-demo.mp3', playmode='sequential', repeat=True)
-    make(audiodeviceoutCHOP, 'audiodevout1', -855, -580, audio)
-    analysis = make(analyzeCHOP, 'analyze1', -855, -430, audio, function='rmspower')
-    drive = make(mathCHOP, 'math1', -630, -370, analysis, chanop='avg')
-    detail = make(mathCHOP, 'math2', -630, -510, analysis, chanop='avg')
-    drive.par.torange1, drive.par.torange2 = .12, 1.86
-    detail.par.torange1, detail.par.torange2 = .50, 2.0
-    make(nullCHOP, 'null4', -415, -370, drive)
-    make(nullCHOP, 'null5', -415, -510, detail)
-    power = "float(op('null4')[0])"
-    harmonics = "float(op('null5')[0])"
 
+def build_feedback_material(scene, power, harmonics, resolution):
+    make = partial(make_node, scene)
+    width, height = resolution
+    size = dict(outputresolution='custom', resolutionw=width, resolutionh=height)
     # Circle → grain displacement → animated noise mask → Palette Feedback Edge.
     circle = make(circleTOP, 'circle1', -1080, 160, **size,
                   radiusx=.188, radiusy=.188, borderalpha=0, bgalpha=0)
@@ -132,8 +121,30 @@ def build(audio_file, *, rotation_source=None):
     texture_level = make(levelTOP, 'level6', 2930, -155, texture, opacity=.128)
     finish = make(compositeTOP, 'comp6', 3150, 160, combined_edges, texture_level,
                   operand='outsideluminance')
-    final = make(transformTOP, 'transform2', 3370, 160, finish, sx=1.03, sy=1.03,
+    return make(transformTOP, 'transform2', 3370, 160, finish, sx=1.03, sy=1.03,
                  bgcolora=1, compover=True, extend='zero')
+
+
+def build(audio_file, *, rotation_source=None):
+    scene = op('/project1')
+    make = partial(make_node, scene)
+    size = dict(outputresolution='custom', resolutionw=WIDTH, resolutionh=HEIGHT)
+    scene.vfs.addFile(str(audio_file), overrideName='venus-demo.mp3')
+    audio = make(audiofileinCHOP, 'audiofilein1', -1080, -430,
+                 file='vfs:/project1:venus-demo.mp3', playmode='sequential', repeat=True)
+    make(audiodeviceoutCHOP, 'audiodevout1', -855, -580, audio)
+    analysis = make(analyzeCHOP, 'analyze1', -855, -430, audio, function='rmspower')
+    drive = make(mathCHOP, 'math1', -630, -370, analysis, chanop='avg')
+    detail = make(mathCHOP, 'math2', -630, -510, analysis, chanop='avg')
+    drive.par.torange1, drive.par.torange2 = .12, 1.86
+    detail.par.torange1, detail.par.torange2 = .50, 2.0
+    make(nullCHOP, 'null4', -415, -370, drive)
+    make(nullCHOP, 'null5', -415, -510, detail)
+    power = "float(op('null4')[0])"
+    harmonics = "float(op('null5')[0])"
+
+    final = build_feedback_material(scene, power, harmonics, (WIDTH, HEIGHT))
+    keyboard = scene.op('keyboardin1')
     if rotation_source is not None:
         scene.vfs.addFile(str(rotation_source.with_name('nebula-test.png')),
                           overrideName='venus-nebula.png')
