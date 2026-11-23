@@ -27,7 +27,7 @@ PALETTE = (
 )
 
 
-def build(audio_file):
+def build(audio_file, *, rotation_source=None):
     scene = op('/project1')
 
     def place(node, x, y):
@@ -134,9 +134,25 @@ def build(audio_file):
                   operand='outsideluminance')
     final = make(transformTOP, 'transform2', 3370, 160, finish, sx=1.03, sy=1.03,
                  bgcolora=1, compover=True, extend='zero')
-    output = make(nullTOP, 'out_image', 3600, 160, final)
+    if rotation_source is not None:
+        scene.vfs.addFile(str(rotation_source.with_name('nebula-test.png')),
+                          overrideName='venus-nebula.png')
+        nebula = make(moviefileinTOP, 'nebula_texture', 3370, -195,
+                      file='vfs:/project1:venus-nebula.png')
+        pixel = make(textDAT, 'rotation_fragment', 3600, -195)
+        pixel.text = rotation_source.read_text(encoding='utf-8')
+        globe = make(glslTOP, 'rotating_venus', 3600, 160, final, nebula,
+                     pixeldat=pixel.path, **size)
+        globe.seq.vec.numBlocks = 1
+        globe.par.vec0name = 'uMotion'
+        globe.par.vec0valuex.expr = 'absTime.seconds'
+        globe.par.vec0valuey.expr = 'absTime.seconds * .61'
+        globe.par.vec0valuez.expr = f'min(1., max(0., ({power} - .12) * 1.65))'
+        globe.par.vec0valuew = .89
+        final = globe
+    output = make(nullTOP, 'out_image', 3830, 160, final)
     output.viewer = True
-    panel = make(containerCOMP, 'viewport', 3600, -80, w=WIDTH, h=HEIGHT,
+    panel = make(containerCOMP, 'viewport', 3830, -80, w=WIDTH, h=HEIGHT,
                  top=output.path, topfill='off')
     panel.viewer = True
     scene.par.top = output.path
