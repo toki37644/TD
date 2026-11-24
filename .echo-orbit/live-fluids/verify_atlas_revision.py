@@ -8,7 +8,7 @@ scope = dict(globals(), __file__=str(source))
 exec(compile(source.read_text(encoding='utf-8'), str(source), 'exec'), scope)
 
 VENUS_FRAMES = 810
-BODY_FRAMES = 272
+BODY_FRAMES = 313
 OTHER_BODIES = (0, 1, 3, 4)
 END = VENUS_FRAMES + len(OTHER_BODIES) * BODY_FRAMES
 
@@ -18,17 +18,17 @@ def record_other_body(module, native, step, now):
     sequence, frame = divmod(step - VENUS_FRAMES, BODY_FRAMES)
     body = OTHER_BODIES[sequence]
     point = (.47, .64)
-    if 34 <= frame <= 65:
-        point = app.center_uv(body)
-        if frame == 65:
+    if 34 <= frame <= 106:
+        point = app.hover_anchor if app.hover == body else app.center_uv(body)
+        if frame == 106:
             assert app.hover == body and app.label_alpha > .90
             assert module.screen_distance(app.center_uv(body), (.5,.5)) < .018
             app.click(point)
             assert app.entered and app.focus == body
-    elif 66 <= frame < 236:
-        position = min(1., (frame - 66) / 150.)
+    elif 107 <= frame < 277:
+        position = min(1., (frame - 107) / 150.)
         point = (.23 + .54 * position, .33 + .36 * position)
-    elif frame == 236:
+    elif frame == 277:
         if body == 3:
             module.testing = False
             try:
@@ -39,7 +39,9 @@ def record_other_body(module, native, step, now):
             app.click(module.RETURN)
         assert not app.entered and app.focus == -1
     app.advance(now, point, True)
-    if frame == 198:
+    if frame == 102 and body == 0:
+        return 'hover-sun'
+    if frame == 239:
         assert app.entered and app.arrival > .99
         assert app.view[0] > .55 and app.view[1] > .26
         return f'tour-{module.SCENES[body + 1]}'

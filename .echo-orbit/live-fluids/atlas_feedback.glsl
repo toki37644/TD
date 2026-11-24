@@ -77,36 +77,42 @@ vec3 rotateFeedback(vec2 q, int id, float angle) {
            (1.-smoothstep(.965,1.003,sqrt(d)));
 }
 
-vec3 closeupGlobe(vec2 q, int id, float time, float beat) {
-    // Intersect a front-facing ray with the unit sphere, then rotate the
-    // resulting normal into the planet's texture space.
-    float distanceSquared = dot(q,q);
-    if (distanceSquared > 1.02) return vec3(0.);
-    vec3 normal = normalize(vec3(q,sqrt(max(0.,1.-distanceSquared))));
-    vec3 surface = normal;
-    surface.yz = turn(uView.y-.16) * surface.yz;
-    surface.xz = turn(uView.x+.12*sin(.19*time+float(id))) * surface.xz;
-    surface.xy = turn(-.29+.13*float(id)) * surface.xy;
+vec3 closeupGlobe(vec2 q, int id, float beat) {
+    // Use the projection and light from the standalone rotating Venus.
+    float r = length(q);
+    vec3 normal = normalize(vec3(q,sqrt(max(.001,1.-r*r))));
+    vec3 body = normal;
+    body.xy = turn(.26) * body.xy;
+    body.xz = turn(uView.x) * body.xz;
+    body.yz = turn(uView.y-.18) * body.yz;
+    vec2 front = vec2(.88*body.x + .20*body.y*body.z, .85*body.y + .20*body.z);
+    vec2 rear = vec2(.84*body.x - .19*body.y*body.z,
+                     .78*body.y - .28*body.z + .075*body.x);
+    vec3 ink = mix(texture(sTD2DInputs[3],.5+rear*vec2(.169,.300)).rgb,
+                   texture(sTD2DInputs[3],.5+front*vec2(.169,.300)).rgb,
+                   smoothstep(-.30,.40,body.z));
+    float fold = body.y+.38*body.x-.18*body.z+.135*sin(3.8*body.x+2.7*body.z)
+                 +.064*sin(6.9*body.x-4.1*body.z);
+    float warm = max(ink.r-ink.b*.72,0.);
+    float belt = bell((fold-.04)/.285);
+    float seam = bell((fold+.10)/.034)+.46*bell((fold-.08)/.052);
+    ink = mix(ink,vec3(1.,.25,.093),belt*.25*warm);
+    ink += vec3(.49,.12,.15)*seam*(.13+.27*warm);
+    float longitude = dot(body,normalize(vec3(-.56,.19,.79)));
+    float crest = smoothstep(.14,.88,longitude)*bell((fold-.09)/.067);
+    ink = feedbackDye(mix(ink,vec3(.94,.52,.68),.48*crest),id);
+    // Carry the later tutorial feedback as a light detail across the same surface.
+    vec3 detail = mix(closeupInk(rear,id),closeupInk(front,id),smoothstep(-.30,.40,body.z));
+    ink = mix(ink,detail,.12);
 
-    // The native input is a disk. Project each hemisphere separately and
-    // blend across the meridian so a full yaw has no texture seam.
-    vec2 front = surface.xy*vec2(1.04,.98)/(1.+.53*surface.z) + vec2(.10,.07);
-    vec2 rear = turn(-.86)*vec2(-surface.x,surface.y)*vec2(.91,1.08)/(1.-.53*surface.z)
-                + vec2(-.11,.15);
-    float hemisphere = smoothstep(-.33,.33,surface.z);
-    vec3 ink = mix(closeupInk(rear,id),closeupInk(front,id),hemisphere);
-    vec3 side = closeupInk(turn(.57)*vec2(surface.z,surface.y)*.88-vec2(.05,.12),id);
-    float pigment = max(ink.r,max(ink.g,ink.b));
-    ink += side * (.15 + .30*(1.-smoothstep(.05,.44,pigment)));
-
-    vec3 key = normalize(vec3(-.54,.41,.67));
-    float day = smoothstep(-.31,.93,dot(normal,key));
-    float limb = pow(1.-normal.z,2.35);
-    vec3 air = mix(coolTint(id),hotTint(id),.30+.39*day);
-    vec3 floorColor = mix(coolTint(id),hotTint(id),.2)*(.19+.31*day);
-    float lighting = id == 0 ? .63+.52*day : .34+.83*day;
-    return (floorColor + ink*lighting*(1.+.07*beat+.075*uAudio.w)) * (1.-.57*limb) +
-           air * limb * (.29+.42*day);
+    vec3 light = normalize(vec3(-.63,.63,.59));
+    float diffuse = smoothstep(-.62,.87,dot(normal,light));
+    float fresnel = pow(1.-normal.z,2.75);
+    float glint = pow(max(0.,dot(normal,normalize(light+vec3(0.,0.,1.)))),21.);
+    vec3 air = id == 2 ? mix(vec3(.21,.14,.80),vec3(.14,.67,.97),diffuse) :
+                        mix(coolTint(id),hotTint(id),.59*diffuse);
+    return ink*(.25+.76*diffuse)*(1.+.06*beat) +
+           whiteLight(id)*.084*glint + air*fresnel*(.23+.40*diffuse);
 }
 
 vec3 bodyLayer(vec3 background, vec2 world, vec2 cursor, vec4 body, int id,
@@ -139,8 +145,12 @@ vec3 bodyLayer(vec3 background, vec2 world, vec2 cursor, vec4 body, int id,
     if (r > 1.34) return background;
     float overviewWeight = id == 0 ? 0. : 1.-locked;
     vec3 sphere = overviewWeight > .002 ? rotateFeedback(q,id,body.w*8.5) : vec3(0.);
-    float silhouette = 1.-smoothstep(.993,1.003,r);
-    vec3 globe = locked*silhouette > .002 ? closeupGlobe(q,id,time,beat) : vec3(0.);
+    float angle = atan(q.y,q.x);
+    float edge = r-1.-.008*sin(5.*angle+uView.x*1.7)-.004*sin(9.*angle-time*1.1);
+    float silhouette = 1.-smoothstep(-.003,.004,edge);
+    vec3 globe = locked*silhouette > .002 ? closeupGlobe(q,id,beat) : vec3(0.);
+    float haze = bell(max(edge,0.)/.035)*(1.-silhouette);
+    background += visible*locked*mix(coolTint(id),hotTint(id),.46)*haze*(.075+.06*beat);
     float overviewMask = (1.-smoothstep(.974,1.015,r))*overviewWeight;
     float detailMask = locked*silhouette;
     return background*(1.-visible*(.94*overviewMask+detailMask)) +

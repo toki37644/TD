@@ -12,8 +12,6 @@ WORKSPACE = HERE.parent.parent
 TD_BIN = Path('C:/Program Files/TouchDesigner/bin')
 if not (TD_BIN / 'toeexpand.exe').is_file():
     TD_BIN = Path('C:/Program Files/Derivative/TouchDesigner/bin')
-NEBULA_ASSET = 'spinning-galaxy.mp4'
-NEBULA_SIZE = (1920, 1080)
 
 STARTUP = '''from pathlib import Path
 from traceback import format_exc
@@ -70,16 +68,17 @@ $mask.Dispose()
 '''
 
 GLINTS = '''    if (scene >= 0 && uCamera.w > .02) {
-        vec2 grainStep = 4. / FRAME_SIZE;
-        vec3 soft = texture(sTD2DInputs[0], uv+vec2(grainStep.x,0.)).rgb;
-        soft += texture(sTD2DInputs[0], uv-vec2(grainStep.x,0.)).rgb;
-        soft += texture(sTD2DInputs[0], uv+vec2(0.,grainStep.y)).rgb;
-        soft += texture(sTD2DInputs[0], uv-vec2(0.,grainStep.y)).rgb;
         float pulse = uAudio.x*.31+uAudio.w*.43;
-        color += (cool*(soft.r*.17) + warm*(soft.g*.22) + whiteLight(scene)*(soft.b*.16))
-                 * uCamera.w * (.83+pulse);
-        color += (cool*motes.r*.22 + warm*motes.g*.22) * uCamera.w;
+        vec3 sparks = cool*motes.r*.41 + warm*motes.g*.43 + whiteLight(scene)*motes.b*.16;
+        color += sparks*uCamera.w*(.86+pulse);
     }
+'''
+
+NEBULA_COMPOSITE = '''vec3 nebulaLayer(vec2 screen, vec2 pointer, int scene) {
+    vec3 background = vec3(.0015,.0016,.0032);
+    if (scene < 0 || uCamera.w < .002) return background;
+    return background + texture(sTD2DInputs[1], vUV.st).rgb * smoothstep(.07,.94,uCamera.w);
+}
 '''
 
 
@@ -89,7 +88,9 @@ def revision_shader():
     end = source.index('float lineSegment(', start)
     material = (HERE / 'atlas_feedback.glsl').read_text(encoding='utf-8')
     source = source[:start] + material + '\n' + source[end:]
-    source = source.replace('graded * envelope * feather', 'graded * envelope * feather * 1.19')
+    start = source.index('vec3 nebulaLayer(')
+    end = source.index('vec3 whiteLight(', start)
+    source = source[:start] + NEBULA_COMPOSITE + source[end:]
     marker = '    if (scene>=0 && uTransition.x<.999)'
     return source.replace(marker, GLINTS + marker, 1)
 
@@ -121,7 +122,7 @@ def install_native():
             page.appendFloat('Drive', label='Low Frequency and Attack')[0].val = .16
             page.appendFloat('Detail', label='Mid Frequencies')[0].val = .50
             final = scope['build_feedback_material'](
-                material, 'float(parent().par.Drive)', 'float(parent().par.Detail)', (960, 540))
+                material, 'float(parent().par.Drive)', 'float(parent().par.Detail)', (1280, 720))
         else:
             page.appendFloat('Harmonicgain', label='Audio Harmonic Gain')[0].val = .50
             final = scope['build_graph'](material, 'float(parent().par.Harmonicgain)', scope['FRAME_SIZE'])
@@ -149,15 +150,29 @@ def install_native():
     scene.op('viewport').par.w, scene.op('viewport').par.h = width, height
     names = 'body-names-bilingual.png'
     for asset in list(scene.vfs):
-        if asset.name in ('body-names.png', 'body-names-en.png', names, 'nebula-motion.mp4', NEBULA_ASSET):
+        if asset.name in ('body-names.png', 'body-names-en.png', names, 'nebula-motion.mp4', 'spinning-galaxy.mp4'):
             asset.destroy()
     scene.vfs.addFile(str(folder / names), overrideName=names)
     scene.op('planet_names').par.file = f'vfs:/project1:{names}'
-    scene.vfs.addFile(str(HERE.parent / 'stock' / NEBULA_ASSET), overrideName=NEBULA_ASSET)
-    nebula = scene.op('nebula_footage')
-    nebula.par.file = f'vfs:/project1:{NEBULA_ASSET}'
+    for name in ('nebula_footage', 'nebula_field', 'nebula_pixel'):
+        previous = scene.op(name)
+        if previous is not None:
+            previous.destroy()
+    pixel = scene.create(textDAT, 'nebula_pixel')
+    pixel.nodeX, pixel.nodeY = 10, 110
+    pixel.text = (HERE / 'atlas_nebula.glsl').read_text(encoding='utf-8')
+    nebula = scene.create(glslTOP, 'nebula_field')
+    nebula.nodeX, nebula.nodeY = 215, 110
+    nebula.par.pixeldat = pixel.path
+    nebula.par.outputresolution = 'custom'
+    nebula.par.resolutionw, nebula.par.resolutionh = width, height
+    nebula.seq.vec.numBlocks = 3
+    for i, name in enumerate(('uPointer', 'uAudio', 'uScene')):
+        getattr(nebula.par, f'vec{i}name').val = name
+    nebula.par.vec2valuex = -1.
+    shader.inputConnectors[1].connect(nebula)
     nebula.cook(force=True)
-    assert (nebula.width, nebula.height) == NEBULA_SIZE and not nebula.errors(), nebula.errors()
+    assert (nebula.width, nebula.height) == engine.FRAME_SIZE and not nebula.errors(), nebula.errors()
     final_top = scene.op('out_image')
     final_top.cook(force=True)
     assert (final_top.width, final_top.height) == engine.FRAME_SIZE
@@ -178,7 +193,7 @@ def verify_native(verification):
 
 
 def stage():
-    folder = HERE.parent / '.venus-build' / 'sphere-revision'
+    folder = HERE.parent / '.venus-build' / 'cloud-revision'
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / 'Interactive-stage.toe'
     from prepare_install import dat

@@ -12,6 +12,10 @@ FRAME_SIZE = (720, 1280)
 ASPECT = FRAME_SIZE[0] / FRAME_SIZE[1]
 SIZE = (540, 960)
 ARRIVAL_SECONDS = 1.52
+HOVER_DWELL = .12
+HOVER_RELEASE = .10
+CENTER_SECONDS = 1.0
+RETURN_SECONDS = .85
 SCENES = ('overview', 'sun', 'mercury', 'venus', 'earth', 'mars')
 RADII = (.065, .013, .023, .027, .020)
 AXIS_POSITIONS = (-.205, -.076, .024, .132, .232)
@@ -23,6 +27,16 @@ RETURN = (.092, .926)
 
 def approach(current, target, dt, rate):
     return target + (current - target) * exp(-rate * dt)
+
+
+def glide(current, velocity, target, dt, seconds):
+    # Critical damping reaches roughly 98% of a stationary target in seconds.
+    # Carrying the velocity through a target change keeps reversals continuous.
+    rate = 5.8 / seconds
+    decay = exp(-rate * dt)
+    offset = current - target
+    slope = velocity + rate * offset
+    return target + (offset + dt * slope) * decay, (velocity - rate * dt * slope) * decay
 
 
 def screen_distance(a, b):
@@ -52,6 +66,7 @@ class CameraState:
         self.time = self.dt = self.flow_time = 0.0
         self.bodies = orbit_positions(0.)
         self.camera = (0., 0., 1., 0.)
+        self.camera_velocity = (0., 0.)
         self.explore = (0., 0.)
         self.pointer = (.5, .5)
         self.pointer_velocity = (0., 0.)
@@ -60,7 +75,14 @@ class CameraState:
         self.timelock = 0.0
         self.hover = self.focus = self.shown = -1
         self.hover_anchor = None
+        self.hover_started = self.last
+        self.hover_left_at = None
+        self.hover_candidate = -1
+        self.candidate_since = self.last
         self.hover_released_at = None
+        self.release_candidate = -1
+        self.overview_settle_until = self.last
+        self.pan_handoff = None
         self.view = (0., 0.)
         self.entered = False
         self.back_glow = 0.0
@@ -85,13 +107,7 @@ class CameraState:
         scale = 1. + .14 * self.label_alpha if self.label_id == body_id else 1.
         return self.bodies[body_id][2] * self.camera[2] * scale
 
-    def hit(self, position):
-        if self.time < .67 or self.last < self.timelock or self.camera[3] >= .15:
-            return -1
-        if self.hover >= 0:
-            if (screen_distance(position, self.hover_anchor) < .018 or
-                    screen_distance(position, self.center_uv(self.hover)) < self.hit_radius(self.hover) + .024):
-                return self.hover
+    def visible_hit(self, position):
         closest = -1
         distance = 1.0
         for i in range(len(self.bodies)):
@@ -100,29 +116,86 @@ class CameraState:
                 closest, distance = i, gap
         return closest
 
+    def can_hover(self):
+        return self.time >= .67 and self.last >= self.timelock and self.camera[3] < .15
+
+    def holds_hover(self, position, follow=False):
+        anchor = self.hover_anchor
+        center = self.center_uv(self.hover)
+        if (screen_distance(position, anchor) < .024 or
+                screen_distance(position, center) < self.hit_radius(self.hover) + .024):
+            return True
+        if not follow or self.last - self.hover_started > CENTER_SECONDS + .15:
+            return False
+        # Only the short path swept by this body is eligible during the glide.
+        ax, ay = (center[0] - anchor[0]) * ASPECT, center[1] - anchor[1]
+        px, py = (position[0] - anchor[0]) * ASPECT, position[1] - anchor[1]
+        length_squared = ax*ax + ay*ay
+        progress = (ax*px + ay*py) / max(.0001, length_squared)
+        return 0. < progress < 1. and hypot(px - progress*ax, py - progress*ay) < .025
+
+    def hit(self, position):
+        if not self.can_hover():
+            return -1
+        if self.hover >= 0 and self.holds_hover(position):
+            return self.hover
+        return self.visible_hit(position)
+
+    def release_hover(self, position, candidate=-1):
+        self.pan_handoff = (self.last, self.bodies[self.hover][:2])
+        self.hover = self.hover_candidate = -1
+        self.hover_anchor = self.hover_left_at = None
+        self.overview_settle_until = self.last + RETURN_SECONDS
+        self.hover_released_at = position
+        self.release_candidate = candidate
+
     def update_hover(self, position, inside):
-        if not inside or self.entered:
-            self.hover = -1
-            self.hover_anchor = self.hover_released_at = None
+        if self.entered or not self.can_hover():
+            self.hover_candidate = -1
             return
+        if not inside:
+            if self.hover >= 0:
+                self.release_hover(None)
+            self.hover_candidate = -1
+            self.hover_released_at = None
+            return
+        if self.hover >= 0:
+            if self.holds_hover(position, follow=True):
+                self.hover_left_at = None
+                return
+            if self.hover_left_at is None:
+                self.hover_left_at = self.last
+                self.release_candidate = self.visible_hit(position)
+            if self.last - self.hover_left_at < HOVER_RELEASE:
+                return
+            replacement = self.visible_hit(position)
+            self.release_hover(position, replacement if replacement == self.release_candidate else -1)
+            return
+        target = self.visible_hit(position)
         if self.hover_released_at is not None:
             if screen_distance(position, self.hover_released_at) < .010:
-                return
-            self.hover_released_at = None
-        target = self.hit(position)
-        if target != self.hover:
-            self.hover_anchor = position if target >= 0 else None
-            # A body passing under a stationary pointer while the camera returns
-            # must not start a new hover.
-            if target < 0:
-                self.hover_released_at = position
+                if target != self.release_candidate:
+                    target = -1
+            else:
+                self.hover_released_at = None
+        if target != self.hover_candidate:
+            self.hover_candidate = target
+            self.candidate_since = self.last
+        if target >= 0 and self.last - self.candidate_since >= HOVER_DWELL:
             self.hover = target
+            self.hover_anchor = position
+            self.hover_started = self.last
+            self.hover_left_at = None
 
     def leave(self):
         self.entered = False
         self.arrival = 1.
         self.arrival_start = None
         self.focus = self.hover = -1
+        self.hover_candidate = -1
+        self.hover_anchor = self.hover_left_at = self.hover_released_at = None
+        self.overview_settle_until = self.last + RETURN_SECONDS
+        self.pan_handoff = None
         self.timelock = self.last + .60
         self.cursor_trail.clear()
         self.burst = None
@@ -146,7 +219,9 @@ class CameraState:
             self.focus = self.shown = target
             self.entered = True
             self.hover = -1
-            self.hover_anchor = self.hover_released_at = None
+            self.hover_candidate = -1
+            self.hover_anchor = self.hover_left_at = self.hover_released_at = None
+            self.pan_handoff = None
             self.view = (0., 0.)
 
     def advance(self, now, position, inside):
@@ -157,7 +232,7 @@ class CameraState:
         self.flow_time += self.dt * (.88 + .66 * self.energy[1])
         dt = self.dt
         self.update_hover(position, inside)
-        if inside and self.hover < 0 and not self.entered and self.camera[3] < .15:
+        if inside and self.hover < 0 and self.hover_candidate < 0 and not self.entered and self.camera[3] < .15:
             target = (explore_axis(position[0], .14), explore_axis(position[1], .22))
             self.explore = tuple(approach(before, after, dt, 2.7)
                                  for before, after in zip(self.explore, target))
@@ -168,12 +243,26 @@ class CameraState:
         if self.entered and self.focus >= 0:
             x, y, radius, _ = self.bodies[self.focus]
             detail = (x, y, (.179 if self.focus == 0 else .199) / radius, 1.)
+            camera_seconds = .62
         elif self.hover >= 0:
             detail = (*self.bodies[self.hover][:2], 1., 0.)
+            camera_seconds = CENTER_SECONDS
         else:
-            detail = (*self.explore, 1., 0.)
-        self.camera = tuple(approach(before, after, dt, rate) for before, after, rate in
-                            zip(self.camera, detail, (6.4, 6.4, 4.9, 4.3)))
+            pan = self.explore
+            if self.pan_handoff is not None:
+                started, origin = self.pan_handoff
+                blend = smooth_between(0., .22, now - started)
+                pan = tuple(a + (b-a)*blend for a, b in zip(origin, pan))
+                if blend >= 1.:
+                    self.pan_handoff = None
+            detail = (*pan, 1., 0.)
+            remaining = max(0., self.overview_settle_until - now)
+            camera_seconds = .60 + (RETURN_SECONDS - .60) * min(1., remaining / .35)
+        x, vx = glide(self.camera[0], self.camera_velocity[0], detail[0], dt, camera_seconds)
+        y, vy = glide(self.camera[1], self.camera_velocity[1], detail[1], dt, camera_seconds)
+        self.camera_velocity = (vx, vy)
+        self.camera = (x, y, approach(self.camera[2], detail[2], dt, 4.9),
+                       approach(self.camera[3], detail[3], dt, 4.3))
         if self.focus < 0 and self.camera[3] < .008:
             self.shown = -1
         speed = min(1., screen_distance(self.pointer, position) * 16.) if inside else 0.
@@ -210,7 +299,7 @@ class CameraState:
                 self.label_side = -1. if self.bodies[target][0] > .055 else 1.
         visible = target >= 0 and target == self.label_id
         self.label_leaving = not visible
-        self.label_alpha = approach(self.label_alpha, float(visible), self.dt, 12. if visible else 6.1)
+        self.label_alpha = approach(self.label_alpha, float(visible), self.dt, 8.5 if visible else 6.1)
 
     def uniforms(self):
         return (self.camera, (self.time, *self.pointer, self.intent * (.26 + .74 * self.motion)), tuple(self.energy),
@@ -337,14 +426,16 @@ class ParticleField:
         mx, my = (state.pointer[0] - .5) * ASPECT, state.pointer[1] - .5
         vx, vy = state.pointer_velocity
         dx, dy = mx - x, my - y
-        local = np.exp(-(dx * dx + dy * dy) / .23)
-        pull = state.intent * local * (.53 + .42 * state.motion) * (.30 + .65 * phase)
+        local = np.exp(-(dx * dx + dy * dy) / .052)
+        pull = state.intent * local * (.47 + .39 * state.motion) * (.32 + .64 * phase)
         x += dx * pull + (-dy * .19 + np.tanh(vx) * .25) * pull * state.motion
         y += dy * pull + (dx * .19 + np.tanh(vy) * .25) * pull * state.motion
         life = np.sin(np.pi * phase) ** .64
         a = self.spark * life * state.camera[3] ** 1.26
-        a *= (.93 + .82 * bass + (1.17 * event + .86 * high) * (choice > .65))
-        a *= (.55 + .45 * np.sin(strip * 8.1 + height * 3.0 + time) ** 2) * (1. + .62 * pull)
+        a *= (1.20 + .91 * bass + (1.17 * event + .86 * high) * (choice > .65))
+        clusters = np.sin(strip * 14.3 + 2.1 * side - time*.31) ** 4
+        a *= (.72+.43*clusters) * (1. + .62 * pull)
+        a *= 1. - .74 * np.exp(-(x/.145)**2) * smooth_between(.325,.476,y)
         if state.burst:
             bx, by, began = state.burst
             age = state.last - began
@@ -462,6 +553,9 @@ class Atlas:
         self.shader = op(ROOT + 'solar_atlas')
         self.uniform_parameters = [[getattr(self.shader.par, f'vec{i}value{axis}') for axis in 'xyzw']
                                    for i in range(min(self.shader.seq.vec.numBlocks, len(self.state.uniforms())))]
+        nebula = op(ROOT + 'nebula_field')
+        self.nebula_uniforms = () if nebula is None else tuple(
+            tuple(getattr(nebula.par, f'vec{i}value{axis}') for axis in 'xyzw') for i in range(3))
         self.panel = op(ROOT + 'viewport')
         self.sources = [op(ROOT + 'audio_' + name) for name in SCENES]
         self.envelopes = [op(ROOT + 'volume_' + name) for name in SCENES]
@@ -480,13 +574,16 @@ class Atlas:
             self.cloud.copyNumpyArray(self.particles.render(self.state))
             self.last_raster = now
 
-        for pars, values in zip(self.uniform_parameters, self.state.uniforms()):
+        uniforms = self.state.uniforms()
+        targets = (*zip(self.uniform_parameters, uniforms), *zip(self.nebula_uniforms, uniforms[1:4]))
+        for pars, values in targets:
             for par, value in zip(pars, values):
                 par.val = float(value)
         bass, mid, _, attack = self.state.energy
         if self.feedback is not None:
-            self.feedback.par.Drive = float(.16 + .89 * bass + .32 * attack)
-            self.feedback.par.Detail = float(.50 + .96 * mid)
+            close = self.state.lock_fade
+            self.feedback.par.Drive = float((1.-close)*(.16+.89*bass+.32*attack) + close*(.12+1.74*self.rms))
+            self.feedback.par.Detail = float(.50 + (1.-close)*.96*mid + close*1.50*self.rms)
         if self.closeup is not None:
             self.closeup.par.Harmonicgain = .5 + 1.5 * self.rms
 

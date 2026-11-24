@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 
 const workspace = process.cwd();
 const work = path.join(workspace, '.echo-orbit');
-const scratch = path.join(work,'.venus-build','sphere-revision','credits');
+const scratch = path.join(work,'.venus-build','cloud-revision','credits');
 await fs.mkdir(scratch,{recursive:true});
 const runtime = 'C:/Program Files/WindowsApps/OpenAI.CodexPrimaryRuntime.v26-1119-907-0_26.1119.907.0_x64__3k8sg7r9htsxt/dependencies';
 const skill = 'C:/Users/toki/.codex/plugins/cache/openai-primary-runtime/presentations/26.1119.11507/skills/presentations';
@@ -64,8 +64,7 @@ type('音乐星球教程', '天体材质  mrxccc《音乐星球节奏互动》',
 type('音画构思参考', '音画笔记  Vivi S《TD 宇宙回响》', 65, 532, 472, 30, 17, lavender, false,
   'https://xhslink.cn/o/7NuVmtgTRWx');
 type('首页参考', '首页构图  用户提供的横轴星图、暗色星图与录屏', 65, 564, 472, 30, 17, lavender);
-type('背景星云视频', '高清星云  Colin Jones / Pexels', 65, 596, 472, 30, 17, lavender, false,
-  'https://www.pexels.com/video/digital-animation-of-a-spinning-galaxy-15562120/');
+type('背景星云', '近景背景  程序星云与实时星尘', 65, 596, 472, 30, 17, lavender);
 
 for (const [i, [scene, title, range, id]] of tracks.entries()) {
   const y = 221 + i * 54;
@@ -75,14 +74,14 @@ for (const [i, [scene, title, range, id]] of tracks.entries()) {
   type('片段 '+i, range, 1046, y, 155, 39, 18, subtle);
 }
 type('总览混音', '总览使用 No Cello 混音。曲名与参考标题可点击。', 563, 551, 650, 31, 17, subtle);
-type('使用说明', '音乐按 CC BY 4.0 署名。星云视频来自 Pexels。球面、星尘与交互由 TouchDesigner 实时运行。',
+type('使用说明', '音乐按 CC BY 4.0 署名。球面、分层星云、星尘与交互由 TouchDesigner 实时生成。',
   65, 632, 1130, 42, 19, subtle, false, 'https://www.scottbuckley.com.au/library/using-this-music/');
 
 slide.speakerNotes.text = [
   ...visual.map(ref=>`${ref.title}，${ref.artist}，小红书。${ref.url}。图截自用户提供的录屏。`),
   '近景天体反馈链参考 mrxccc《TouchDesigner 教程｜音乐星球节奏互动》。按公开画面重建 Outside Luminance 底图、Maximum 回灌和双 Edge 合成，金星色标按成品画面调配。太阳、水星、地球和火星在同一套实时材质上使用各自的配色。https://www.bilibili.com/video/BV1pkRiYpEZh/',
   '音画构思参考，Vivi S《TD 宇宙回响》。https://xhslink.cn/o/7NuVmtgTRWx',
-  '新版近景星云使用 Colin Jones 的 Digital Animation of a Spinning Galaxy，1920×1080。按天体重新取景、调色并叠加实时星尘。https://www.pexels.com/video/digital-animation-of-a-spinning-galaxy-15562120/ 。Pexels 许可 https://www.pexels.com/license/ 。',
+  '新版近景背景由 TouchDesigner 的 nebula_field GLSL TOP 在 720×1280 原生画幅生成。针对五颗天体编排云带、颜色、远星和近处交互星尘。',
   '竖版总览的横向天体排列参考用户提供的侧视星图，原作者未标注。长条尘带、太阳粒子弧和特写粒子参考用户提供的图片与录屏。',
   '粒子实现参考，Bileam Tschepe《粒子扭曲效果》（授权中文教程）。https://www.bilibili.com/video/BV1ye4y1m7iv/ 。音乐频段映射参考《Audioreactive Particle Cloud》。https://www.elekktronaut.com/tutorials/audioreactive-particle-cloud-new 。',
   ...tracks.map(([scene, title, range, id])=>`${scene}：${title} by Scott Buckley (CC BY 4.0), ${range}. https://www.scottbuckley.com.au/library/${id}/`),

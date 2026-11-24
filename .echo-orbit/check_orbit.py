@@ -1,6 +1,7 @@
 """Native rendering and input-state smoke tests for the staged solar atlas."""
 
 from pathlib import Path
+from math import tau
 from time import monotonic
 from traceback import format_exc
 
@@ -15,8 +16,7 @@ qa_mod = op('/project1/orbit_engine').module
 app = qa_mod.atlas()
 final_top = op('/project1/out_image')
 mix = op('/project1/music_mix')
-nebula = op('/project1/nebula_footage')
-first_nebula_frame = nebula.numpyArray().copy()
+nebula = op('/project1/nebula_field')
 material = op('/project1/closeup_feedback')
 
 
@@ -40,6 +40,31 @@ def check_states():
         assert direction * state.camera[axis] > .09, (point, state.camera)
         assert state.camera[2:] == (1., 0.)
     check_log('PASS portrait overview pans in four directions and retains the left-to-right axis')
+    state = qa_mod.CameraState(0.)
+    state.advance(3., (.5,.5), False)
+    for frame in range(1, 14):
+        state.advance(3. + frame/60., (.02+.073*frame,.50), True)
+        assert state.hover == -1, (frame, state.hover)
+    state = qa_mod.CameraState(0.)
+    state.advance(3., (.5,.5), False)
+    anchor = state.center_uv(0)
+    for frame in range(1, 33):
+        state.advance(3. + frame/60., anchor, True)
+    assert state.hover == 0 and state.camera_velocity[0] < -.04
+    assert .035 < qa_mod.screen_distance(state.center_uv(0), (.5,.5)) < .10
+    midpoint = ((anchor[0]+state.center_uv(0)[0])*.5,.50)
+    for frame in range(33, 41):
+        state.advance(3. + frame/60., midpoint, True)
+        assert state.hover == 0
+    edge = (.98,.25)
+    for frame in range(41, 49):
+        state.advance(3. + frame/60., edge, True)
+    assert state.hover == -1 and state.camera_velocity[0] < .02
+    for frame in range(49, 155):
+        state.advance(3. + frame/60., edge, True)
+        assert state.hover == -1
+    assert state.camera[0] > .10
+    check_log('PASS fast sweep, follow corridor, and mid-glide handoff to edge panning')
     for i in range(5):
         state = qa_mod.CameraState(0.)
         state.advance(3., (.5, .5), False)
@@ -94,20 +119,51 @@ def check_globe(index):
     final_top.cook(force=True)
     first = final_top.numpyArray().copy()
     view = app.state.view
-    app.state.view = (view[0] + 1.18, view[1] - .86)
-    app.apply(force=True)
-    final_top.cook(force=True)
-    turned = final_top.numpyArray()
+    interior = np.s_[525:755, 245:475, :3]
+
+    def surface(yaw, pitch):
+        app.state.view = (view[0] + yaw, view[1] + pitch)
+        app.apply(force=True)
+        final_top.cook(force=True)
+        return final_top.numpyArray()[interior].copy()
+
+    baseline = first[interior]
+    yaw_delta = np.mean(np.abs(baseline - surface(1.18, 0.)))
+    pitch_delta = np.mean(np.abs(baseline - surface(0., -.86)))
+    assert min(yaw_delta, pitch_delta) > .006, (index, yaw_delta, pitch_delta)
+    if index == 3:
+        previous = baseline
+        for step in range(1, 9):
+            turned = surface(step*tau/8.,0.)
+            assert .006 < np.mean(np.abs(previous-turned)) < .52, step
+            previous = turned
+        assert np.mean(np.abs(baseline-turned)) < .008
+        check_log('PASS Venus closes a full revolution with coherent surface shading')
     app.state.view = view
     app.apply(force=True)
-    interior = np.s_[525:755, 245:475, :3]
-    difference = np.mean(np.abs(first[interior] - turned[interior]))
-    assert difference > .009, (index, difference)
     # TOP arrays are ordered from the bottom row, while title positions start at the top.
     title = first[-155:, 230:490, :3][::-1].max(axis=2)
     assert np.count_nonzero(title[62:107] > .60) > 100, index
     assert np.count_nonzero(title[114:143] > .60) > 24, index
-    check_log(f'PASS {qa_mod.SCENES[index]} close-up texture rotates in 3D, image delta {difference:.3f}, both title lines')
+    check_log(f'PASS {qa_mod.SCENES[index]} rotates on both axes ({yaw_delta:.3f}, {pitch_delta:.3f}), both title lines')
+
+
+def check_nebula(index):
+    nebula.cook(force=True)
+    assert (nebula.width, nebula.height) == qa_mod.FRAME_SIZE and not nebula.errors(), nebula.errors()
+    image = nebula.numpyArray().copy()
+    assert np.count_nonzero(image[:,:,:3].max(axis=2) > .055) > 4000, index
+    if index == 4:
+        nebula.save(str(qa_dir / 'earth_nebula_only.png'))
+        state_time = app.state.time
+        app.state.time += 2.0
+        app.apply()
+        nebula.cook(force=True)
+        delta = np.mean(np.abs(image[:,:,:3] - nebula.numpyArray()[:,:,:3]))
+        assert delta > .0015, delta
+        app.state.time = state_time
+        app.apply()
+        check_log(f'PASS Earth portrait cloud layer contains live moving structure ({delta:.3f})')
 
 
 def render_track(index, started):
@@ -134,15 +190,14 @@ def render_track(index, started):
         save_frame(f'{index}_{qa_mod.SCENES[index]}')
         if index:
             check_globe(index)
+            check_nebula(index)
         check_log(f'{qa_mod.SCENES[index]}  mix peak {float(abs(output).max()):.3f}  '
                   f'feedback gain {gain:.3f}  spectrum {np.round(app.state.energy, 3).tolist()}')
         if index + 1 < len(qa_mod.SCENES):
             begin(index + 1)
         else:
             check_motion()
-            assert nebula.par.file.eval() == 'vfs:/project1:spinning-galaxy.mp4'
-            assert (nebula.width, nebula.height) == (1920, 1080) and not nebula.errors()
-            assert np.count_nonzero(first_nebula_frame != nebula.numpyArray()) > 1000
+            assert op('/project1/nebula_footage') is None
             app.state = qa_mod.CameraState(monotonic())
             qa_mod.testing = False
             check_log('PASS all embedded sources decoded, audio output, and six native frames')

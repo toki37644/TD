@@ -5,7 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const base = process.cwd();
-const qa = path.join(base, '.echo-orbit', '.venus-build', 'sphere-revision');
+const qa = path.join(base, '.echo-orbit', '.venus-build', 'cloud-revision');
 const tmp = path.join(qa, 'slides');
 const stock = path.join(base, '.echo-orbit', 'stock');
 await fs.mkdir(tmp,{recursive:true});
@@ -76,11 +76,11 @@ function edge(s,a,b,fromSide='right',toSide='left',kind='straight',color=C.mint)
 }
 const vis=slide();
 header(vis,'视觉方案与节点图');
-text(vis,'视觉对象','总览与近景使用两条实时反馈链。\n近景将原生 TOP 反馈映射到球面，并叠加高清星云。',67,125,1150,92,28,C.soft);
+text(vis,'视觉对象','近景把实时反馈映射到旧版金星的球面材质。\n程序星云、远星和交互星尘分层叠加。',67,125,1150,92,28,C.soft);
 const pointer=node(vis,'实时参数','orbit_engine\n轨道、镜头与频段',344,237,200,70,C.amber);
 const shSrc=node(vis,'色束输入','feedback_material\ncloseup_feedback',66,345,210,84);
 const sh=node(vis,'场景渲染','solar_atlas\nGLSL Multi TOP',344,345,200,84);
-const hud=node(vis,'星云图层','particles / nebula\n实时粒子与星云素材',66,232,210,82);
+const hud=node(vis,'星云图层','particles / nebula_field\n实时星尘与程序星云',66,232,210,82);
 const over=node(vis,'画法切换','总览自转 / 近景球体\n粒子聚散与名称显示',660,345,251,84);
 const out=node(vis,'输出','out_image\n最终图像',1004,345,209,84);
 edge(vis,pointer,sh,'bottom','top','straight',C.amber);edge(vis,shSrc,sh);edge(vis,sh,over);edge(vis,hud,sh,'right','top','elbow');edge(vis,over,out);
@@ -88,14 +88,14 @@ const steps=['Noise2 / Comp1\n扣出明暗轮廓','Feedback Edge\n保留边缘�
 const flow=steps.map((step,i)=>node(vis,'近景步骤 '+(i+1),step,66+i*238,500,194,70));
 for(let i=1;i<flow.length;i++) edge(vis,flow[i-1],flow[i]);
 text(vis,'像素实现','太阳保留放射日冕。四颗行星沿用各自的主色和冷暖关系。',67,611,1140,51,23,C.soft);
-note(vis,'closeup_feedback 为五颗天体的 3D 球面提供实时纹理。Comp1 以 Outside Luminance 扣出低频轮廓，Feedback1 回读 Comp3 Maximum，Level2 令旧帧衰减。两道 Edge 与 Level 分支叠合细缘。solar_atlas 计算球面光照与旋转。particles 与 1920×1080 的 nebula_footage 提供实时颗粒和雾带。');
+note(vis,'feedback_material 提供旧版金星的原生反馈纹理，closeup_feedback 提供补充细节。Comp1 以 Outside Luminance 扣出轮廓，Feedback1 回读 Comp3 Maximum，Level2 令旧帧衰减。solar_atlas 沿用金星演示中的球面投影与光照。nebula_field 在竖屏原生分辨率生成云层和远星，particles 单独更新可互动的近处星尘。');
 
 const planet=slide();
 header(planet,'总览与天体近景');
 text(planet,'操控说明','五颗天体沿横轴排列。悬停时居中并放大，点击后进入球体近景。',67,125,1150,68,27,C.soft);
 const planetViews=[
   {file:'interaction-75',title:'轨道总览',caption:'五颗天体从左到右沿同一条线排列。'},
-  {file:'interaction-170',title:'悬停居中',caption:'天体居中放大约 14%，显示英文名。'},
+  {file:'hover-sun',title:'悬停居中',caption:'镜头约 1 秒移到天体中央，显示英文名。'},
   {file:'interaction-328',title:'球体近景',caption:'顶部显示中英文名，移动指针转动球体。'},
 ];
 for(const [i,view] of planetViews.entries()){
@@ -116,7 +116,7 @@ const bodies=[
  ['tour-sun','太阳','橙红核心与放射日冕'],
  ['tour-mercury','水星','冷蓝断层与窄尾流'],
  ['interaction-328','金星','橙粉色束与双向尘幕'],
- ['tour-earth','地球','青绿褶皱与极光带'],
+ ['tour-earth','地球','青蓝双层云带与暗尘'],
  ['tour-mars','火星','锈红色束与分叉尘流'],
 ];
 for(const [i,[frame,name,description]] of bodies.entries()){
@@ -130,7 +130,7 @@ note(palette,'五幅画面来自同一次 TouchDesigner 实机录制，均在点
 const interact=slide(C.paper);
 header(interact,'交互方案',C.black);
 const acts=[
- {x:66,t:'居中并放大',p:'悬停时显示英文名。\n移开后镜头复位，名称消散。',f:'interaction-170',s:'悬停天体'},
+ {x:66,t:'居中并放大',p:'停稳后镜头约 1 秒滑向天体。\n移开后镜头复位，名称消散。',f:'hover-sun',s:'悬停天体'},
  {x:456,t:'聚散进入近景',p:'天体先散开，再聚合为球体。\n顶部显示双语名称。',f:'interaction-248',s:'点击天体'},
  {x:846,t:'转动球体与牵引星尘',p:'移动指针即可转动球体。\n星尘跟随指针，点击时向外散开。',f:'interaction-561',s:'移动或点击近景'}];
 for(const a of acts){
@@ -139,7 +139,7 @@ for(const a of acts){
  text(interact,a.t,a.t,a.x,471,365,50,31,C.black,true);
  text(interact,a.t+'说明',a.p,a.x,535,365,80,20,C.muted);
 }
-note(interact,'总览指针靠近任意边缘可平移视窗。悬停期间镜头优先居中，指针移开后平滑恢复边缘平移。近景指针坐标同时映射到球体的偏航与俯仰，速度改变星尘走向与力度。按 Esc 或画面左上方的箭头返回总览。');
+note(interact,'总览指针靠近任意边缘可平移视窗。停稳约 120 毫秒后锁定，镜头约 1 秒滑向天体，沿球体扫过的路径跟随也可维持悬停。移开时延续当前镜头速度，再恢复边缘平移。近景指针坐标映射到偏航和俯仰，速度改变星尘走向与力度。按 Esc 或左上角箭头返回。');
 
 const logic=slide();
 header(logic,'交互与声音节点图');
@@ -167,7 +167,7 @@ const cue=[
   ['0–3 秒','沿画面边缘平移总览。\n悬停金星，观察居中与英文名。'],
   ['3–6 秒','点击进入金星近景。\n看双语标题，听音轨切换。'],
   ['6–13 秒','移动指针转动球体并牵引星尘。\n点左上方箭头返回。'],
-  ['13–32 秒','依次进入太阳、水星、地球、火星。\n对比球面配色、星云与音轨。']];
+  ['13–35 秒','依次进入太阳、水星、地球、火星。\n对比球面配色、星云与音轨。']];
 for(let i=0;i<cue.length;i++){
   const y=213+i*96;
   text(demo,'时间 '+i,cue[i][0],68,y,153,68,28,C.black,true);
