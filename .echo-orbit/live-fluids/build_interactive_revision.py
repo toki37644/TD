@@ -193,7 +193,7 @@ def verify_native(verification):
 
 
 def stage():
-    folder = HERE.parent / '.venus-build' / 'cloud-revision'
+    folder = HERE.parent / '.venus-build' / 'size-revision'
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / 'Interactive-stage.toe'
     from prepare_install import dat

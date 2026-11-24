@@ -17,7 +17,9 @@ HOVER_RELEASE = .10
 CENTER_SECONDS = 1.0
 RETURN_SECONDS = .85
 SCENES = ('overview', 'sun', 'mercury', 'venus', 'earth', 'mars')
-RADII = (.065, .013, .023, .027, .020)
+# The overview previously imposed a .015 render minimum on Mercury.
+RADII = (.065, .015, .023, .027, .020)
+DETAIL_ZOOM = .78 * ASPECT / (2. * max(RADII))
 AXIS_POSITIONS = (-.205, -.076, .024, .132, .232)
 AXIS_PHASES = (0, 1.37, 2.67, .87, 1.54)
 ORBIT_SPEEDS = (0, .27, .21, .16, .13)
@@ -241,8 +243,8 @@ class CameraState:
             if self.arrival >= 1.:
                 self.arrival_start = None
         if self.entered and self.focus >= 0:
-            x, y, radius, _ = self.bodies[self.focus]
-            detail = (x, y, (.179 if self.focus == 0 else .199) / radius, 1.)
+            x, y, _, _ = self.bodies[self.focus]
+            detail = (x, y, DETAIL_ZOOM, 1.)
             camera_seconds = .62
         elif self.hover >= 0:
             detail = (*self.bodies[self.hover][:2], 1., 0.)
@@ -479,8 +481,13 @@ class ParticleField:
         fan = np.floor(start * 17) / 17 * 2 * np.pi + .21 * (hue - .5)
         strength = .44 + 1.25 * attack + .47 * high
         align = .19 + .16 * (state.shown % 3)
+        u, v = state.center_uv(state.shown)
+        origin_x, origin_y = (u - .5) * ASPECT, v - .5
+        rim = state.bodies[state.shown][2] * state.camera[2] * 1.23
         cx, cy = (state.pointer[0] - .5) * ASPECT, state.pointer[1] - .5
-        local = np.exp(-((.35 * np.cos(fan) - cx) ** 2 + (.35 * np.sin(fan) - cy) ** 2) / .16)
+        probe = rim + .088
+        local = np.exp(-((origin_x + probe*np.cos(fan) - cx) ** 2 +
+                         (origin_y + probe*np.sin(fan) - cy) ** 2) / .16)
         attract = .52 * state.motion * state.intent * local
         result = []
         channels = np.where(hue > .85, 2, np.where(hue > .38, 1, 0))
@@ -488,8 +495,8 @@ class ParticleField:
             z = np.maximum(0., age - delay)
             gravity = (align + .24 * seed) * z * (1 + .66 * bass)
             curve = fan + z * (.65 + .52 * mid) * (2 * width - 1)
-            x = (.262 + gravity) * np.cos(curve)
-            y = (.262 + gravity) * np.sin(curve)
+            x = origin_x + (rim + gravity) * np.cos(curve)
+            y = origin_y + (rim + gravity) * np.sin(curve)
             x += (cx - x) * attract * z ** 1.4
             y += (cy - y) * attract * z ** 1.4
             visibility = np.sin(np.pi * z) ** .65 * (1. - .70 * z)

@@ -79,8 +79,7 @@ vec3 rotateFeedback(vec2 q, int id, float angle) {
 
 vec3 closeupGlobe(vec2 q, int id, float beat) {
     // Use the projection and light from the standalone rotating Venus.
-    float r = length(q);
-    vec3 normal = normalize(vec3(q,sqrt(max(.001,1.-r*r))));
+    vec3 normal = normalize(vec3(q,sqrt(max(0.,1.-dot(q,q)))));
     vec3 body = normal;
     body.xy = turn(.26) * body.xy;
     body.xz = turn(uView.x) * body.xz;
@@ -112,7 +111,7 @@ vec3 closeupGlobe(vec2 q, int id, float beat) {
     vec3 air = id == 2 ? mix(vec3(.21,.14,.80),vec3(.14,.67,.97),diffuse) :
                         mix(coolTint(id),hotTint(id),.59*diffuse);
     return ink*(.25+.76*diffuse)*(1.+.06*beat) +
-           whiteLight(id)*.084*glint + air*fresnel*(.23+.40*diffuse);
+           whiteLight(id)*.084*glint + air*fresnel*(.27+.40*diffuse);
 }
 
 vec3 bodyLayer(vec3 background, vec2 world, vec2 cursor, vec4 body, int id,
@@ -121,8 +120,8 @@ vec3 bodyLayer(vec3 background, vec2 world, vec2 cursor, vec4 body, int id,
     float transition = selected ? uTransition.x : 1.;
     float ease = smoothstep(0.,1.,transition);
     vec2 center = mix(uTransition.yz,(body.xy-uCamera.xy)*uCamera.z,ease);
-    float radius = mix(uTransition.w,body.z*uCamera.z,ease);
-    vec2 q = ((world-uCamera.xy)*uCamera.z-center) / max(radius,.015);
+    float radius = max(.001,mix(uTransition.w,body.z*uCamera.z,ease));
+    vec2 q = ((world-uCamera.xy)*uCamera.z-center) / radius;
     float r = length(q);
     if (r > (id == 0 ? 2.48 : 1.42)) return background;
     float locked = selected ? uScene.y*smoothstep(.39,.85,transition) : 0.;
@@ -145,11 +144,11 @@ vec3 bodyLayer(vec3 background, vec2 world, vec2 cursor, vec4 body, int id,
     if (r > 1.34) return background;
     float overviewWeight = id == 0 ? 0. : 1.-locked;
     vec3 sphere = overviewWeight > .002 ? rotateFeedback(q,id,body.w*8.5) : vec3(0.);
-    float angle = atan(q.y,q.x);
-    float edge = r-1.-.008*sin(5.*angle+uView.x*1.7)-.004*sin(9.*angle-time*1.1);
-    float silhouette = 1.-smoothstep(-.003,.004,edge);
+    // Antialias the projected sphere at a fixed pixel width on both axes.
+    float edge = (r-1.)*radius*FRAME_SIZE.y;
+    float silhouette = 1.-smoothstep(-.65,.65,edge);
     vec3 globe = locked*silhouette > .002 ? closeupGlobe(q,id,beat) : vec3(0.);
-    float haze = bell(max(edge,0.)/.035)*(1.-silhouette);
+    float haze = bell(max(edge,0.)/max(1.35,.035*radius*FRAME_SIZE.y))*(1.-silhouette);
     background += visible*locked*mix(coolTint(id),hotTint(id),.46)*haze*(.075+.06*beat);
     float overviewMask = (1.-smoothstep(.974,1.015,r))*overviewWeight;
     float detailMask = locked*silhouette;

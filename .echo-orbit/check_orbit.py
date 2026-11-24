@@ -93,6 +93,7 @@ def check_states():
         for frame in range(226, 256):
             state.advance(3. + frame / 60., (.84, .74), True)
         assert state.view[0] > 1.9 and state.view[1] > .52
+        assert abs(state.camera[2] - qa_mod.DETAIL_ZOOM) < .035
         view = state.view
         state.advance(state.last + .016, qa_mod.RETURN, True)
         assert state.view == view
@@ -119,22 +120,40 @@ def check_globe(index):
     final_top.cook(force=True)
     first = final_top.numpyArray().copy()
     view = app.state.view
-    interior = np.s_[525:755, 245:475, :3]
+    width, height = qa_mod.FRAME_SIZE
+    u, v = app.state.center_uv(index - 1)
+    x, y = round(u*width), round(v*height)
+    nominal = qa_mod.RADII[index - 1] * qa_mod.DETAIL_ZOOM * height
+    crop_radius = round(nominal) + 9
+    roi = np.s_[y-crop_radius:y+crop_radius, x-crop_radius:x+crop_radius, :3]
+    depth = round(nominal*.53)
+    center = np.s_[crop_radius-depth:crop_radius+depth, crop_radius-depth:crop_radius+depth]
 
     def surface(yaw, pitch):
         app.state.view = (view[0] + yaw, view[1] + pitch)
         app.apply(force=True)
         final_top.cook(force=True)
-        return final_top.numpyArray()[interior].copy()
+        return final_top.numpyArray()[roi].copy()
 
-    baseline = first[interior]
-    yaw_delta = np.mean(np.abs(baseline - surface(1.18, 0.)))
-    pitch_delta = np.mean(np.abs(baseline - surface(0., -.86)))
+    disc = first[roi]
+    yaw_change = np.abs(disc - surface(1.18, 0.))
+    pitch_change = np.abs(disc - surface(0., -.86))
+    yaw_delta = np.mean(yaw_change[center])
+    pitch_delta = np.mean(pitch_change[center])
     assert min(yaw_delta, pitch_delta) > .006, (index, yaw_delta, pitch_delta)
+    # Only the projected surface changes when yaw or pitch changes in this frame.
+    support = np.maximum(yaw_change,pitch_change).max(axis=2) > .008
+    rows, columns = np.nonzero(support)
+    measured = (int(columns.max()-columns.min()+1), int(rows.max()-rows.min()+1))
+    tolerance = max(6., nominal*.05)
+    assert all(abs(diameter-2.*nominal) < tolerance for diameter in measured), (index, measured, nominal)
+    assert abs(measured[0]-measured[1]) <= max(3., nominal*.021), (index, measured)
+    check_log(f'PASS {qa_mod.SCENES[index]} circular diameter {measured[0]} x {measured[1]} px, expected {2.*nominal:.1f}')
     if index == 3:
+        baseline = disc[center]
         previous = baseline
         for step in range(1, 9):
-            turned = surface(step*tau/8.,0.)
+            turned = surface(step*tau/8.,0.)[center]
             assert .006 < np.mean(np.abs(previous-turned)) < .52, step
             previous = turned
         assert np.mean(np.abs(baseline-turned)) < .008

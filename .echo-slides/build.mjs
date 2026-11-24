@@ -5,7 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const base = process.cwd();
-const qa = path.join(base, '.echo-orbit', '.venus-build', 'cloud-revision');
+const qa = path.join(base, '.echo-orbit', '.venus-build', 'size-revision');
 const tmp = path.join(qa, 'slides');
 const stock = path.join(base, '.echo-orbit', 'stock');
 await fs.mkdir(tmp,{recursive:true});
@@ -111,7 +111,7 @@ note(planet,'所有图片均为 TouchDesigner 原生渲染。近景分别表现�
 
 const palette=slide();
 header(palette,'五颗天体的近景');
-text(palette,'近景说明','五颗球体共用反馈链，各有配色、星云运动和专属音轨。',67,126,1150,62,27,C.soft);
+text(palette,'近景说明','五颗天体沿用总览的直径比例，近景共用同一放大倍率。',67,126,1150,62,27,C.soft);
 const bodies=[
  ['tour-sun','太阳','橙红核心与放射日冕'],
  ['tour-mercury','水星','冷蓝断层与窄尾流'],
@@ -125,7 +125,7 @@ for(const [i,[frame,name,description]] of bodies.entries()){
  text(palette,name,name,x,567,194,42,26,C.mint,true);
  text(palette,name+'特征',description,x,615,216,34,18,C.soft);
 }
-note(palette,'五幅画面来自同一次 TouchDesigner 实机录制，均在点击后锁定近景时截取。');
+note(palette,'五幅画面来自同一次 TouchDesigner 实机录制。截图按同一画幅和相同比例展示，球体直径对应总览未悬停时的尺寸。');
 
 const interact=slide(C.paper);
 header(interact,'交互方案',C.black);
