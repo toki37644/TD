@@ -11,6 +11,7 @@ uniform vec4 uMars;
 uniform vec4 uLabel;   // labeled body, opacity, side of the leader, dispersing
 
 uniform vec4 uTransition;
+uniform vec4 uView;    // close-up yaw, pitch, and whether the view is open
 
 out vec4 fragColor;
 
@@ -82,7 +83,7 @@ vec3 nebulaLayer(vec2 screen, vec2 pointer, int scene) {
         gradeAmount = .82;
     } else if (scene == 1) {
         // A short, cold wake, narrowing into a lit seam by the planet.
-        vec2 wake = turn(-.41) * (field + vec2(.07,.033));
+        vec2 wake = turn(-.41) * (field + vec2(.07+.030*sin(.24*time),.033));
         float path = .082 * sin(3.4 * wake.x);
         float width = .047 + .101 * smoothstep(-.18,.72,wake.x);
         envelope = bell((wake.y - path) / width) *
@@ -103,13 +104,14 @@ vec3 nebulaLayer(vec2 screen, vec2 pointer, int scene) {
         gradeAmount = .55;
     } else if (scene == 3) {
         // Keep the diagonal sweep of the source in the Earth scene.
-        source = vec2(.50, .505) + vec2(.465 * field.x + .045 * field.y, .49 * field.y - .085 * field.x);
+        vec2 sweep = turn(.11*sin(.16*time)) * field;
+        source = vec2(.50, .505) + vec2(.465*sweep.x + .045*sweep.y, .49*sweep.y - .085*sweep.x);
         tint = vec3(1.08, 1.30, 1.90);
         envelope = .68;
     } else {
         // Dust fans fork toward the upper left in two overlapping streaks.
         vec2 fan = turn(-2.53) * (field - vec2(.06,-.033));
-        float bow = .11 * sin(fan.x * 4.1) - .024;
+        float bow = .11 * sin(fan.x * 4.1 + .16*time) - .024;
         float spread = .075 + .205 * smoothstep(-.13,.64,fan.x);
         float primary = bell((fan.y - bow) / spread);
         float secondary = bell((fan.y - bow + .147 * smoothstep(.01,.70,fan.x)) / (.44 * spread));
@@ -121,9 +123,19 @@ vec3 nebulaLayer(vec2 screen, vec2 pointer, int scene) {
     }
     float margin = min(min(source.x, 1.0 - source.x), min(source.y, 1.0 - source.y));
     float feather = smoothstep(.0, .105, margin);
-    vec3 footage = texture(sTD2DInputs[1], clamp(source, .001, .999)).rgb;
+    // Reframe the widescreen source around its detailed spiral arms.
+    vec2 plate = vec2(.50,.53) + (clamp(source,.001,.999)-.5)*vec2(.68,.91);
+    vec2 texel = uTD2DInfos[1].res.xy * 1.45;
+    vec3 footage = texture(sTD2DInputs[1], plate).rgb;
+    vec3 surround = texture(sTD2DInputs[1], plate+vec2(texel.x,0.)).rgb;
+    surround += texture(sTD2DInputs[1], plate-vec2(texel.x,0.)).rgb;
+    surround += texture(sTD2DInputs[1], plate+vec2(0.,texel.y)).rgb;
+    surround += texture(sTD2DInputs[1], plate-vec2(0.,texel.y)).rgb;
+    footage = max(vec3(0.), footage + .48*(footage-.25*surround));
     const vec3 LUMA = vec3(.229, .614, .157);
     float light = dot(footage, LUMA);
+    footage /= 1. + .83*light;
+    light /= 1. + .83*light;
     vec3 theme = wakeTint(scene);
     vec3 deep = mix(coolTint(scene),theme,.47);
     vec3 lit = mix(theme, normalize(theme+.36), smoothstep(.48,.92,light)*.55);
@@ -398,11 +410,14 @@ vec3 planetDial(vec2 point, vec4 body, int index, float time, bool hovered) {
            (trace + .72 * vertex) * planetLight(index, time) * (1.0 - smoothstep(.05, .63, uCamera.w));
 }
 
-float nameInk(vec2 point, int index) {
-    vec2 coord = point / vec2(100.0,44.0) + .5;
-    if (any(lessThan(coord,vec2(0.0))) || any(greaterThan(coord,vec2(1.0)))) return 0.0;
-    coord.y = (coord.y + float(4 - index)) / 5.0;
+float nameInk(vec2 point, int index, float rowCenter, vec2 bounds) {
+    if (any(greaterThan(abs(point),bounds))) return 0.0;
+    vec2 coord = vec2(.5 + point.x/256., 1. - (144.*float(index)+rowCenter-point.y)/720.);
     return texture(sTD2DInputs[2], coord).r;
+}
+
+float hoverNameInk(vec2 point, int index) {
+    return nameInk(point * 1.28, index, 28., vec2(64.,27.));
 }
 
 vec3 planetCaption(vec2 screen, vec4 body, int index) {
@@ -421,7 +436,7 @@ vec3 planetCaption(vec2 screen, vec4 body, int index) {
     if (abs(local.x) > (radius + 157.0) || abs(local.y) > radius + 63.0) return vec3(0.0);
 
     float settled = smoothstep(.30,.91,alpha);
-    float letters = nameInk(local, index) * settled;
+    float letters = hoverNameInk(local, index) * settled;
     float specks = 0.0;
     if (alpha < .985 && abs(local.x) < 95.0 && abs(local.y) < 52.0) {
         for (int layer = 0; layer < 4; ++layer) {
@@ -433,7 +448,7 @@ vec3 planetCaption(vec2 screen, vec4 body, int index) {
             float seed = hash21(cell + 9.0 * lane);
             vec2 dotOrigin = (cell + .5) * 3.4 - lane * 2.0;
             dotOrigin += vec2(seed - .5, fract(seed * 21.0) - .5) * 1.55;
-            float density = nameInk(dotOrigin, index);
+            float density = hoverNameInk(dotOrigin, index);
             float dot = bell(length(travelled - dotOrigin) / (.48 + .28 * seed));
             specks += dot * density * (.52 + .48 * seed);
         }
@@ -467,6 +482,17 @@ vec3 instrument(vec3 color, vec2 p, vec2 cursor) {
     return color;
 }
 
+vec3 detailTitle(vec3 color, vec2 uv, int index) {
+    vec2 point = (uv - vec2(.5,1.)) * FRAME_SIZE;
+    float chinese = nameInk(point+vec2(0.,84.),index,84.,vec2(110.,27.));
+    float english = nameInk(point+vec2(0.,128.),index,128.,vec2(110.,15.));
+    float alpha = smoothstep(.10,.74,uScene.y);
+    float shade = bell(length((point+vec2(0.,103.))/vec2(130.,56.)));
+    color *= 1. - .39*shade*alpha;
+    return mix(color,vec3(.94,.95,1.),chinese*alpha) +
+           english*alpha*vec3(.65,.73,.87);
+}
+
 void main() {
     vec2 uv = vUV.st;
     vec2 screen = (uv - .5) * ASPECT;
@@ -488,6 +514,8 @@ void main() {
     }
 
     vec4 bodies[5] = vec4[5](uSun, uMercury, uVenus, uEarth, uMars);
+    int label = int(floor(uLabel.x + .5));
+    if (label >= 0 && label < 5 && label != scene) bodies[label].z *= 1.+.14*uLabel.y;
     vec2 disk = world - uSun.xy;
     vec2 relativeSun = world - uSun.xy;
     float arcd = length(relativeSun / vec2(1.0, .96));
@@ -502,13 +530,10 @@ void main() {
         }
     }
 
-    // Hover scales a single body without changing the overview camera.
     for (int i = 0; i < 5; ++i) {
         if (i == scene) continue;
-        vec4 body = bodies[i];
-        if (int(floor(uLabel.x+.5)) == i) body.z *= 1.+.14*uLabel.y;
         float appear = (1.0 - smoothstep(.05, .76, uCamera.w)) * planetLight(i, time);
-        color = bodyLayer(color, world, pointer, body, i, appear, false, time);
+        color = bodyLayer(color, world, pointer, bodies[i], i, appear, false, time);
     }
     if (scene >= 0) color = bodyLayer(color, world, pointer, bodies[scene], scene, 1.0, true, time);
     // Near-side grains cross the center of the solar disk.
@@ -524,8 +549,8 @@ void main() {
     }
     color *= 1.0 - .30 * smoothstep(.43, 1.05, length(screen));
     color = instrument(color, screen, pointer);
-    int label = int(floor(uLabel.x + .5));
-    if (label >= 0 && label < 5 && uLabel.y > .015 && uCamera.w < .35) {
+    if (uView.z > .5 && scene >= 0) color = detailTitle(color,uv,scene);
+    if (uView.z < .5 && label >= 0 && label < 5 && uLabel.y > .015 && uCamera.w < .35) {
         color += planetCaption(screen, bodies[label], label) * (1.-smoothstep(.02,.35,uCamera.w));
     }
     color += (hash21(floor(uv * FRAME_SIZE)) - .5) * .005;

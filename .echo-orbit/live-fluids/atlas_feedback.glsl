@@ -77,6 +77,38 @@ vec3 rotateFeedback(vec2 q, int id, float angle) {
            (1.-smoothstep(.965,1.003,sqrt(d)));
 }
 
+vec3 closeupGlobe(vec2 q, int id, float time, float beat) {
+    // Intersect a front-facing ray with the unit sphere, then rotate the
+    // resulting normal into the planet's texture space.
+    float distanceSquared = dot(q,q);
+    if (distanceSquared > 1.02) return vec3(0.);
+    vec3 normal = normalize(vec3(q,sqrt(max(0.,1.-distanceSquared))));
+    vec3 surface = normal;
+    surface.yz = turn(uView.y-.16) * surface.yz;
+    surface.xz = turn(uView.x+.12*sin(.19*time+float(id))) * surface.xz;
+    surface.xy = turn(-.29+.13*float(id)) * surface.xy;
+
+    // The native input is a disk. Project each hemisphere separately and
+    // blend across the meridian so a full yaw has no texture seam.
+    vec2 front = surface.xy*vec2(1.04,.98)/(1.+.53*surface.z) + vec2(.10,.07);
+    vec2 rear = turn(-.86)*vec2(-surface.x,surface.y)*vec2(.91,1.08)/(1.-.53*surface.z)
+                + vec2(-.11,.15);
+    float hemisphere = smoothstep(-.33,.33,surface.z);
+    vec3 ink = mix(closeupInk(rear,id),closeupInk(front,id),hemisphere);
+    vec3 side = closeupInk(turn(.57)*vec2(surface.z,surface.y)*.88-vec2(.05,.12),id);
+    float pigment = max(ink.r,max(ink.g,ink.b));
+    ink += side * (.15 + .30*(1.-smoothstep(.05,.44,pigment)));
+
+    vec3 key = normalize(vec3(-.54,.41,.67));
+    float day = smoothstep(-.31,.93,dot(normal,key));
+    float limb = pow(1.-normal.z,2.35);
+    vec3 air = mix(coolTint(id),hotTint(id),.30+.39*day);
+    vec3 floorColor = mix(coolTint(id),hotTint(id),.2)*(.19+.31*day);
+    float lighting = id == 0 ? .63+.52*day : .34+.83*day;
+    return (floorColor + ink*lighting*(1.+.07*beat+.075*uAudio.w)) * (1.-.57*limb) +
+           air * limb * (.29+.42*day);
+}
+
 vec3 bodyLayer(vec3 background, vec2 world, vec2 cursor, vec4 body, int id,
                float visible, bool selected, float time) {
     if (visible < .002) return background;
@@ -105,15 +137,12 @@ vec3 bodyLayer(vec3 background, vec2 world, vec2 cursor, vec4 body, int id,
         if (locked < .002) return background;
     }
     if (r > 1.34) return background;
-    float sphereAmount = id == 0 ? 0. : 1.-locked;
-    vec3 sphere = sphereAmount > .002 ? rotateFeedback(q,id,body.w*8.5) : vec3(0.);
-    vec2 flatPosition = q/(1.+.037*beat);
-    vec3 sheet = locked > .002 ? closeupInk(flatPosition,id) : vec3(0.);
-    sheet *= 1.-smoothstep(1.20,1.33,length(flatPosition));
-    if (id == 0) sheet *= 1.18;
-    float peak = max(max(sheet.r,sheet.g),sheet.b);
-    float flatMask = smoothstep(.015,.24,peak);
-    float sphereMask = (1.-smoothstep(.974,1.015,r))*sphereAmount;
-    return background*(1.-visible*(.94*sphereMask+.90*locked*flatMask)) +
-           visible*(sphereAmount*sphere + locked*sheet*(1.+.075*uAudio.w));
+    float overviewWeight = id == 0 ? 0. : 1.-locked;
+    vec3 sphere = overviewWeight > .002 ? rotateFeedback(q,id,body.w*8.5) : vec3(0.);
+    float silhouette = 1.-smoothstep(.993,1.003,r);
+    vec3 globe = locked*silhouette > .002 ? closeupGlobe(q,id,time,beat) : vec3(0.);
+    float overviewMask = (1.-smoothstep(.974,1.015,r))*overviewWeight;
+    float detailMask = locked*silhouette;
+    return background*(1.-visible*(.94*overviewMask+detailMask)) +
+           visible*(overviewWeight*sphere + detailMask*globe);
 }

@@ -43,26 +43,41 @@ def check_states():
     for i in range(5):
         state = qa_mod.CameraState(0.)
         state.advance(3., (.5, .5), False)
+        anchor = state.center_uv(i)
         for frame in range(1, 77):
-            hover = state.center_uv(i)
-            state.advance(3. + frame / 60., hover, True)
+            state.advance(3. + frame / 60., anchor, True)
         assert state.hover == i and state.focus == -1 and not state.entered, (i, state.hover)
         assert state.camera[2:] == (1., 0.) and state.label_id == i and state.label_alpha > .94
-        for frame in range(77, 104):
+        assert qa_mod.screen_distance(state.center_uv(i), (.5, .5)) < .004
+        assert state.explore == (0., 0.) and state.hit(anchor) == i
+        assert state.hit_radius(i) > 1.13 * state.bodies[i][2]
+        for frame in range(77, 145):
             state.advance(3. + frame / 60., (.50,.65), True)
         assert state.hover == -1 and state.label_alpha < .09
-        hover = state.center_uv(i)
-        state.click(hover)
+        assert qa_mod.screen_distance(state.camera[:2], (0., 0.)) < .004
+        anchor = state.center_uv(i)
+        for frame in range(145, 200):
+            state.advance(3. + frame / 60., anchor, True)
+        state.click(anchor if i % 2 == 0 else state.center_uv(i))
         assert state.entered and state.focus == i
-        for frame in range(104, 130):
+        assert state.uniforms()[-1][2] == 1.
+        for frame in range(200, 226):
             state.advance(3. + frame / 60., (.16, .28), True)
         assert state.intent > .80 and state.lock_fade > .83
+        assert state.view[0] < -1.9 and state.view[1] < -.48
+        for frame in range(226, 256):
+            state.advance(3. + frame / 60., (.84, .74), True)
+        assert state.view[0] > 1.9 and state.view[1] > .52
+        view = state.view
+        state.advance(state.last + .016, qa_mod.RETURN, True)
+        assert state.view == view
         state.click(qa_mod.RETURN)
-        for frame in range(130, 207):
+        assert state.uniforms()[-1][2] == 0.
+        for frame in range(257, 334):
             state.advance(3. + frame / 60., (.05, .917), True)
         assert not state.entered and state.focus == -1 and state.camera[3] < .009
     assert qa_mod.orbit_positions(0.) != qa_mod.orbit_positions(1.)
-    check_log('PASS all five local hover labels, label decay, click to zoom, pointer and return')
+    check_log('PASS all five stationary hover anchors, centering, 14% enlargement, return and both rotation axes')
 
 
 def save_frame(name):
@@ -72,6 +87,27 @@ def save_frame(name):
     assert not op('/project1/solar_atlas').errors()
     assert not op('/project1/particles').errors()
     final_top.save(str(qa_dir / (name + '.png')))
+
+
+def check_globe(index):
+    app.apply(force=True)
+    final_top.cook(force=True)
+    first = final_top.numpyArray().copy()
+    view = app.state.view
+    app.state.view = (view[0] + 1.18, view[1] - .86)
+    app.apply(force=True)
+    final_top.cook(force=True)
+    turned = final_top.numpyArray()
+    app.state.view = view
+    app.apply(force=True)
+    interior = np.s_[525:755, 245:475, :3]
+    difference = np.mean(np.abs(first[interior] - turned[interior]))
+    assert difference > .009, (index, difference)
+    # TOP arrays are ordered from the bottom row, while title positions start at the top.
+    title = first[-155:, 230:490, :3][::-1].max(axis=2)
+    assert np.count_nonzero(title[62:107] > .60) > 100, index
+    assert np.count_nonzero(title[114:143] > .60) > 24, index
+    check_log(f'PASS {qa_mod.SCENES[index]} close-up texture rotates in 3D, image delta {difference:.3f}, both title lines')
 
 
 def render_track(index, started):
@@ -96,13 +132,16 @@ def render_track(index, started):
         gain = material.op('noise3').par.gain.eval()
         assert app.rms > .001 and abs(gain - (.5 + 1.5 * app.rms)) < 1e-5
         save_frame(f'{index}_{qa_mod.SCENES[index]}')
+        if index:
+            check_globe(index)
         check_log(f'{qa_mod.SCENES[index]}  mix peak {float(abs(output).max()):.3f}  '
                   f'feedback gain {gain:.3f}  spectrum {np.round(app.state.energy, 3).tolist()}')
         if index + 1 < len(qa_mod.SCENES):
             begin(index + 1)
         else:
             check_motion()
-            assert (nebula.width, nebula.height) == (336, 620) and not nebula.errors()
+            assert nebula.par.file.eval() == 'vfs:/project1:spinning-galaxy.mp4'
+            assert (nebula.width, nebula.height) == (1920, 1080) and not nebula.errors()
             assert np.count_nonzero(first_nebula_frame != nebula.numpyArray()) > 1000
             app.state = qa_mod.CameraState(monotonic())
             qa_mod.testing = False
@@ -151,6 +190,7 @@ assert material.op('comp3').par.operand.eval() == 'maximum'
 assert material.op('feedback1').par.top.eval() == material.op('comp3')
 assert material.op('fold_field') is None
 check_log('PASS native tutorial seed and maximum feedback loop')
+assert (op('/project1/planet_names').width, op('/project1/planet_names').height) == (256, 720)
 qa_mod.testing = True
 
 now = monotonic()

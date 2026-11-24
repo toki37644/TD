@@ -9,7 +9,11 @@ from tempfile import TemporaryDirectory
 
 HERE = Path(__file__).resolve().parent
 WORKSPACE = HERE.parent.parent
-TD_BIN = Path('C:/Program Files/Derivative/TouchDesigner/bin')
+TD_BIN = Path('C:/Program Files/TouchDesigner/bin')
+if not (TD_BIN / 'toeexpand.exe').is_file():
+    TD_BIN = Path('C:/Program Files/Derivative/TouchDesigner/bin')
+NEBULA_ASSET = 'spinning-galaxy.mp4'
+NEBULA_SIZE = (1920, 1080)
 
 STARTUP = '''from pathlib import Path
 from traceback import format_exc
@@ -34,23 +38,33 @@ def onFrameStart(frame):
 LABEL_ATLAS = r'''
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
-$mask = [Drawing.Bitmap]::new(128,280)
+$mask = [Drawing.Bitmap]::new(256,720)
 $canvas = [Drawing.Graphics]::FromImage($mask)
 $canvas.Clear([Drawing.Color]::Black)
 $canvas.TextRenderingHint = 'AntiAliasGridFit'
 $face = [Drawing.Font]::new('Segoe UI', 20, [Drawing.FontStyle]::Regular, [Drawing.GraphicsUnit]::Pixel)
+$chinese = [Drawing.Font]::new('Microsoft YaHei UI', 39, [Drawing.FontStyle]::Regular, [Drawing.GraphicsUnit]::Pixel)
+$english = [Drawing.Font]::new('Segoe UI', 23, [Drawing.FontStyle]::Regular, [Drawing.GraphicsUnit]::Pixel)
 $align = [Drawing.StringFormat]::new()
 $align.Alignment = 'Center'
 $align.LineAlignment = 'Center'
-$words = 'SUN', 'MERCURY', 'VENUS', 'EARTH', 'MARS'
+$words = 'Sun', 'Mercury', 'Venus', 'Earth', 'Mars'
+$names = '太阳', '水星', '金星', '地球', '火星'
 for ($i = 0; $i -lt $words.Count; $i++) {
-    $row = [Drawing.RectangleF]::new(0,($i*56),128,56)
-    $canvas.DrawString($words[$i], $face, [Drawing.Brushes]::White, $row, $align)
+    $y = $i*144
+    $canvas.DrawString($words[$i].ToUpperInvariant(), $face, [Drawing.Brushes]::White,
+                       [Drawing.RectangleF]::new(0,$y,256,56), $align)
+    $canvas.DrawString($names[$i], $chinese, [Drawing.Brushes]::White,
+                       [Drawing.RectangleF]::new(0,($y+56),256,56), $align)
+    $canvas.DrawString($words[$i], $english, [Drawing.Brushes]::White,
+                       [Drawing.RectangleF]::new(0,($y+112),256,32), $align)
 }
-$path = Join-Path (Get-Location).Path 'body-names-en.png'
+$path = Join-Path (Get-Location).Path 'body-names-bilingual.png'
 $mask.Save($path, [Drawing.Imaging.ImageFormat]::Png)
 $align.Dispose()
 $face.Dispose()
+$chinese.Dispose()
+$english.Dispose()
 $canvas.Dispose()
 $mask.Dispose()
 '''
@@ -87,6 +101,8 @@ def install_native():
     folder = Path(project.folder)
     clock.par.framestart = False
     scene.op('orbit_engine').text = (HERE.parent/'orbit_runtime.py').read_text(encoding='utf-8')
+    shader.seq.vec.numBlocks = 12
+    shader.par.vec11name = 'uView'
     scene.op('atlas_pixel').text = revision_shader()
 
     for index, name, filename in ((3, 'feedback_material', 'build_tutorial_venus.py'),
@@ -131,12 +147,17 @@ def install_native():
     width, height = engine.FRAME_SIZE
     shader.par.resolutionw, shader.par.resolutionh = width, height
     scene.op('viewport').par.w, scene.op('viewport').par.h = width, height
-    names = 'body-names-en.png'
+    names = 'body-names-bilingual.png'
     for asset in list(scene.vfs):
-        if asset.name in ('body-names.png', names):
+        if asset.name in ('body-names.png', 'body-names-en.png', names, 'nebula-motion.mp4', NEBULA_ASSET):
             asset.destroy()
     scene.vfs.addFile(str(folder / names), overrideName=names)
     scene.op('planet_names').par.file = f'vfs:/project1:{names}'
+    scene.vfs.addFile(str(HERE.parent / 'stock' / NEBULA_ASSET), overrideName=NEBULA_ASSET)
+    nebula = scene.op('nebula_footage')
+    nebula.par.file = f'vfs:/project1:{NEBULA_ASSET}'
+    nebula.cook(force=True)
+    assert (nebula.width, nebula.height) == NEBULA_SIZE and not nebula.errors(), nebula.errors()
     final_top = scene.op('out_image')
     final_top.cook(force=True)
     assert (final_top.width, final_top.height) == engine.FRAME_SIZE
@@ -157,7 +178,7 @@ def verify_native(verification):
 
 
 def stage():
-    folder = HERE.parent / '.venus-build' / 'interactive'
+    folder = HERE.parent / '.venus-build' / 'sphere-revision'
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / 'Interactive-stage.toe'
     from prepare_install import dat

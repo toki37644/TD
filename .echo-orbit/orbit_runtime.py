@@ -1,7 +1,7 @@
 """Continuous orbits, camera state, audio analysis and shared particle simulation."""
 
 from collections import deque
-from math import cos, exp, hypot, sin
+from math import cos, exp, hypot, sin, tau
 from time import monotonic
 
 import numpy as np
@@ -59,6 +59,9 @@ class CameraState:
         self.motion = .0
         self.timelock = 0.0
         self.hover = self.focus = self.shown = -1
+        self.hover_anchor = None
+        self.hover_released_at = None
+        self.view = (0., 0.)
         self.entered = False
         self.back_glow = 0.0
         self.lock_fade = 0.0
@@ -78,21 +81,42 @@ class CameraState:
         cx, cy, zoom, _ = self.camera
         return ((x - cx) * zoom / ASPECT + .5, (y - cy) * zoom + .5)
 
+    def hit_radius(self, body_id):
+        scale = 1. + .14 * self.label_alpha if self.label_id == body_id else 1.
+        return self.bodies[body_id][2] * self.camera[2] * scale
+
     def hit(self, position):
-        if self.time < .67:
+        if self.time < .67 or self.last < self.timelock or self.camera[3] >= .15:
             return -1
+        if self.hover >= 0:
+            if (screen_distance(position, self.hover_anchor) < .018 or
+                    screen_distance(position, self.center_uv(self.hover)) < self.hit_radius(self.hover) + .024):
+                return self.hover
         closest = -1
         distance = 1.0
-        for i, body in enumerate(self.bodies):
-            detail = self.camera[3] > .40
-            if detail and i != self.shown:
-                continue
-            center = self.center_uv(i)
-            radius = body[2] * self.camera[2]
-            gap = screen_distance(position, center)
-            if gap < radius + .019 and gap < distance:
+        for i in range(len(self.bodies)):
+            gap = screen_distance(position, self.center_uv(i))
+            if gap < self.hit_radius(i) + .019 and gap < distance:
                 closest, distance = i, gap
         return closest
+
+    def update_hover(self, position, inside):
+        if not inside or self.entered:
+            self.hover = -1
+            self.hover_anchor = self.hover_released_at = None
+            return
+        if self.hover_released_at is not None:
+            if screen_distance(position, self.hover_released_at) < .010:
+                return
+            self.hover_released_at = None
+        target = self.hit(position)
+        if target != self.hover:
+            self.hover_anchor = position if target >= 0 else None
+            # A body passing under a stationary pointer while the camera returns
+            # must not start a new hover.
+            if target < 0:
+                self.hover_released_at = position
+            self.hover = target
 
     def leave(self):
         self.entered = False
@@ -115,14 +139,15 @@ class CameraState:
         target = self.hit(position)
         if target >= 0:
             u, v = self.center_uv(target)
-            scale = 1. + .14 * self.label_alpha if self.label_id == target else 1.
-            radius = self.bodies[target][2] * self.camera[2] * scale
+            radius = self.hit_radius(target)
             self.arrival_origin = ((u - .5) * ASPECT, v - .5, radius)
             self.arrival_start = self.last
             self.arrival = 0.
             self.focus = self.shown = target
             self.entered = True
             self.hover = -1
+            self.hover_anchor = self.hover_released_at = None
+            self.view = (0., 0.)
 
     def advance(self, now, position, inside):
         self.dt = max(0., min(.080, now - self.last))
@@ -131,7 +156,7 @@ class CameraState:
         self.bodies = orbit_positions(self.time)
         self.flow_time += self.dt * (.88 + .66 * self.energy[1])
         dt = self.dt
-        self.hover = self.hit(position) if inside and not self.entered and now >= self.timelock else -1
+        self.update_hover(position, inside)
         if inside and self.hover < 0 and not self.entered and self.camera[3] < .15:
             target = (explore_axis(position[0], .14), explore_axis(position[1], .22))
             self.explore = tuple(approach(before, after, dt, 2.7)
@@ -143,6 +168,8 @@ class CameraState:
         if self.entered and self.focus >= 0:
             x, y, radius, _ = self.bodies[self.focus]
             detail = (x, y, (.179 if self.focus == 0 else .199) / radius, 1.)
+        elif self.hover >= 0:
+            detail = (*self.bodies[self.hover][:2], 1., 0.)
         else:
             detail = (*self.explore, 1., 0.)
         self.camera = tuple(approach(before, after, dt, rate) for before, after, rate in
@@ -159,6 +186,10 @@ class CameraState:
         self.pointer_velocity = tuple(approach(before, after, dt, 9.) for before, after in
                                       zip(self.pointer_velocity, velocity))
         in_return = self.entered and inside and screen_distance(position, RETURN) < .051
+        if self.entered and inside and not in_return:
+            yaw, pitch = (position[0] - .5) * tau, (position[1] - .5) * 2.48
+            self.view = (approach(self.view[0], yaw, dt, 8.5),
+                         approach(self.view[1], pitch, dt, 8.5))
         self.intent = approach(self.intent, float(self.entered and inside and not in_return), dt, 7.)
         self.back_glow = approach(self.back_glow, float(in_return), dt, 12.)
         self.lock_fade = approach(self.lock_fade, float(self.entered), dt, 6.7)
@@ -185,7 +216,7 @@ class CameraState:
         return (self.camera, (self.time, *self.pointer, self.intent * (.26 + .74 * self.motion)), tuple(self.energy),
                 (self.shown, self.lock_fade, self.hover if not self.entered else -1, self.back_glow),
                 *self.bodies, (self.label_id, self.label_alpha, self.label_side, float(self.label_leaving)),
-                (self.arrival, *self.arrival_origin))
+                (self.arrival, *self.arrival_origin), (*self.view, float(self.entered), 0.))
 
 
 class Spectrum:
@@ -429,7 +460,8 @@ class Atlas:
         self.gains = [0.] * len(SCENES)
         self.spectrum = Spectrum()
         self.shader = op(ROOT + 'solar_atlas')
-        self.uniform_parameters = [[getattr(self.shader.par, f'vec{i}value{axis}') for axis in 'xyzw'] for i in range(11)]
+        self.uniform_parameters = [[getattr(self.shader.par, f'vec{i}value{axis}') for axis in 'xyzw']
+                                   for i in range(min(self.shader.seq.vec.numBlocks, len(self.state.uniforms())))]
         self.panel = op(ROOT + 'viewport')
         self.sources = [op(ROOT + 'audio_' + name) for name in SCENES]
         self.envelopes = [op(ROOT + 'volume_' + name) for name in SCENES]

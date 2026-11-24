@@ -4,6 +4,9 @@
 # 可由工具安装脚本重新下载的依赖
 /.tools/watchvideo/vendor/
 
+# TouchDesigner 本地构建和验收输出
+/.echo-orbit/.venus-build/
+
 # Python 字节码缓存
 __pycache__/
 *.py[cod]

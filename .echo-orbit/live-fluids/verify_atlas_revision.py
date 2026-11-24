@@ -22,6 +22,7 @@ def record_other_body(module, native, step, now):
         point = app.center_uv(body)
         if frame == 65:
             assert app.hover == body and app.label_alpha > .90
+            assert module.screen_distance(app.center_uv(body), (.5,.5)) < .018
             app.click(point)
             assert app.entered and app.focus == body
     elif 66 <= frame < 236:
@@ -40,6 +41,7 @@ def record_other_body(module, native, step, now):
     app.advance(now, point, True)
     if frame == 198:
         assert app.entered and app.arrival > .99
+        assert app.view[0] > .55 and app.view[1] > .26
         return f'tour-{module.SCENES[body + 1]}'
 
 
@@ -123,6 +125,7 @@ def record_preview(state=None):
     native.audio()
     if step == 170:
         assert app.hover == 2 and app.label_alpha > .9 and app.camera[2] == 1.
+        assert module.screen_distance(app.center_uv(2), (.5,.5)) < .009
     elif step == 328:
         assert app.entered and app.arrival > .99 and native.track == 3
     elif step == 778:
