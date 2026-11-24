@@ -17,6 +17,7 @@ final_top = op('/project1/out_image')
 mix = op('/project1/music_mix')
 nebula = op('/project1/nebula_footage')
 first_nebula_frame = nebula.numpyArray().copy()
+material = op('/project1/closeup_feedback')
 
 
 def check_log(line):
@@ -92,9 +93,11 @@ def render_track(index, started):
         assert max(app.state.energy) > .014, (index, app.state.energy)
         assert not app.sources[index].errors(), app.sources[index].errors()
         assert not op('/project1/audio_device').errors(), op('/project1/audio_device').errors()
+        gain = material.op('noise3').par.gain.eval()
+        assert app.rms > .001 and abs(gain - (.5 + 1.5 * app.rms)) < 1e-5
         save_frame(f'{index}_{qa_mod.SCENES[index]}')
         check_log(f'{qa_mod.SCENES[index]}  mix peak {float(abs(output).max()):.3f}  '
-                  f'spectrum {np.round(app.state.energy, 3).tolist()}')
+                  f'feedback gain {gain:.3f}  spectrum {np.round(app.state.energy, 3).tolist()}')
         if index + 1 < len(qa_mod.SCENES):
             begin(index + 1)
         else:
@@ -143,6 +146,11 @@ def begin(index):
 
 
 check_states()
+assert material.op('comp1').par.operand.eval() == 'outsideluminance'
+assert material.op('comp3').par.operand.eval() == 'maximum'
+assert material.op('feedback1').par.top.eval() == material.op('comp3')
+assert material.op('fold_field') is None
+check_log('PASS native tutorial seed and maximum feedback loop')
 qa_mod.testing = True
 
 now = monotonic()

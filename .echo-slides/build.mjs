@@ -80,12 +80,15 @@ text(vis,'视觉对象','总览与近景使用两条实时反馈链。\n总览�
 const pointer=node(vis,'实时参数','orbit_engine\n轨道、镜头与频段',344,237,200,70,C.amber);
 const shSrc=node(vis,'色束输入','feedback_material\ncloseup_feedback',66,345,210,84);
 const sh=node(vis,'场景渲染','solar_atlas\nGLSL Multi TOP',344,345,200,84);
-const hud=node(vis,'星云图层','particles / nebula\n实时粒子与星云素材',66,490,210,82);
+const hud=node(vis,'星云图层','particles / nebula\n实时粒子与星云素材',66,232,210,82);
 const over=node(vis,'画法切换','球面自转 / 平面近景\n内含粒子聚散和悬停名称',660,345,251,84);
 const out=node(vis,'输出','out_image\n最终图像',1004,345,209,84);
-edge(vis,pointer,sh,'bottom','top','straight',C.amber);edge(vis,shSrc,sh);edge(vis,sh,over);edge(vis,hud,sh,'right','bottom','elbow');edge(vis,over,out);
+edge(vis,pointer,sh,'bottom','top','straight',C.amber);edge(vis,shSrc,sh);edge(vis,sh,over);edge(vis,hud,sh,'right','top','elbow');edge(vis,over,out);
+const steps=['Noise2 / Comp1\n扣出明暗轮廓','Feedback Edge\n保留边缘历史','Slope / Displace\n沿亮度坡度位移','Maximum\n与新帧叠合回灌','Lookup / 双 Edge\n着色与细亮边'];
+const flow=steps.map((step,i)=>node(vis,'近景步骤 '+(i+1),step,66+i*238,500,194,70));
+for(let i=1;i<flow.length;i++) edge(vis,flow[i-1],flow[i]);
 text(vis,'像素实现','太阳保留放射日冕。四颗行星沿用各自的主色和冷暖关系。',67,611,1140,51,23,C.soft);
-note(vis,'Feedback Edge、Noise、Slope、Displace 和 Lookup 生成平面反馈色束。solar_atlas 在总览把色束映射到行星球面，近景沿两道 Edge 与 Level 分支叠合细缘，再经 Outside Luminance 合成颗粒。particles 与 nebula_footage 提供实时颗粒和分层雾带。画面逻辑和画法切换均发生在 solar_atlas 内。');
+note(vis,'closeup_feedback 使用同一条原生 TOP 反馈链生成五颗天体的平面近景。Comp1 以 Outside Luminance 扣出低频轮廓，Feedback1 回读 Comp3 Maximum，Level2 令旧帧衰减。两道 Edge 与 Level 分支叠合细缘。solar_atlas 按场景映射配色，particles 与 nebula_footage 提供实时颗粒和雾带。');
 
 const planet=slide();
 header(planet,'总览与天体近景');
@@ -105,6 +108,24 @@ for(const [i,view] of planetViews.entries()){
   text(planet,view.title+'说明',view.caption,x,y+height+60,width,62,20,C.soft);
 }
 note(planet,'所有图片均为 TouchDesigner 原生渲染。近景分别表现太阳的盘旋日珥、水星的窄尾流、金星的双向弯曲尘幕、地球的极光带和火星的分叉尘流。');
+
+const palette=slide();
+header(palette,'五颗天体的近景');
+text(palette,'近景说明','同一条反馈链，五种配色、星云运动与音轨。',67,126,1150,62,27,C.soft);
+const bodies=[
+ ['tour-sun','太阳','橙红核心与放射日冕'],
+ ['tour-mercury','水星','冷蓝断层与窄尾流'],
+ ['interaction-328','金星','橙粉色束与双向尘幕'],
+ ['tour-earth','地球','青绿褶皱与极光带'],
+ ['tour-mars','火星','锈红色束与分叉尘流'],
+];
+for(const [i,[frame,name,description]] of bodies.entries()){
+ const x=66+i*238;
+ await img(palette,cap(frame),name+'近景',x,205,194,344,'contain');
+ text(palette,name,name,x,567,194,42,26,C.mint,true);
+ text(palette,name+'特征',description,x,615,216,34,18,C.soft);
+}
+note(palette,'五幅画面来自同一次 TouchDesigner 实机录制，均在点击后锁定近景时截取。');
 
 const interact=slide(C.paper);
 header(interact,'交互方案',C.black);
@@ -136,17 +157,17 @@ const dev=node(logic,'音频输出','audio_device\n音频设备输出',984,521,2
 edge(logic,rt,gain,'bottom','top','elbow',C.amber);
 text(logic,'传递的参数','切换与交叉淡入',624,423,270,38,19,C.amber);
 edge(logic,osc,gain,'right','left','straight',C.amber);edge(logic,gain,mix,'right','left','straight',C.amber);edge(logic,mix,dev,'right','left','straight',C.amber);
-text(logic,'声音标注','低频推动色束伸缩，中频带动雾流，高频和瞬态提亮粒子。',65,629,1170,44,22,C.soft);
-note(logic,'orbit_engine 读取同一条送入音频输出的音源，分析低频、中频、高频及瞬态强度。坐标、速度和点击状态进入粒子场。音轨在场景之间交叉淡入淡出。');
+text(logic,'声音标注','音量驱动流体谐波增益，频段与瞬态带动雾流和星尘。',65,629,1170,44,22,C.soft);
+note(logic,'orbit_engine 读取同一条送入音频输出的音源，把均方根音量映射到 Noise3 的谐波增益，同时分析低频、中频、高频及瞬态。坐标、速度和点击状态进入粒子场。音轨在场景之间交叉淡入淡出。');
 
 const demo=slide(C.paper);
-header(demo,'30 秒现场演示',C.black);
+header(demo,'竖版交互演示',C.black);
 text(demo,'演示重点','总览、平面色束与指针星云',67,129,634,53,30,C.muted);
 const cue=[
-  ['0–7 秒','沿画面边缘移动，探索横向星图。\n悬停金星，查看英文名。'],
-  ['7–15 秒','点击进入金星近景。\n看粒子聚合，听音轨切换。'],
-  ['15–22 秒','左右移动指针，拉动两侧星云。\n点击星云观察局部粒子散开。'],
-  ['22–30 秒','按 Esc 回总览，再进入地球。\n对比极光带与金星尘幕。']];
+  ['0–3 秒','沿画面边缘探索横向星图。\n悬停金星，查看英文名。'],
+  ['3–6 秒','点击进入金星近景。\n看粒子聚合，听音轨切换。'],
+  ['6–13 秒','移动指针并点击，观察星尘散开。\n点左上方箭头返回。'],
+  ['13–32 秒','依次进入太阳、水星、地球、火星。\n对比四种星云和音轨。']];
 for(let i=0;i<cue.length;i++){
   const y=213+i*96;
   text(demo,'时间 '+i,cue[i][0],68,y,153,68,28,C.black,true);
@@ -154,7 +175,7 @@ for(let i=0;i<cue.length;i++){
 }
 await img(demo,cap('interaction-646'),'指针牵引下的金星尘幕',717,159,494,213,'contain');
 text(demo,'第一轮截图图注','金星尘幕',717,377,494,30,20,C.muted);
-await img(demo,cap('4_earth'),'地球近景的极光带',717,419,494,213,'contain');
+await img(demo,cap('tour-earth'),'地球近景的极光带',717,419,494,213,'contain');
 text(demo,'第二轮截图图注','地球极光带',717,637,494,30,20,C.muted);
 text(demo,'讲解提示','留意每次切换后的音乐和粒子走向。',68,620,633,47,21,C.muted);
 note(demo,'可以用同一组左右划动对比金星和地球的粒子轨迹。');
@@ -179,7 +200,7 @@ if(process.argv.includes('--validate')){
     return fs.copyFile(source,target,constants.COPYFILE_EXCL);
   };
   try {
-    receipt=await finalizePresentation({workspaceDir:base,candidatePath:candidate,finalPath:stagedDeck,pythonExecutable:path.join(runtime,'python/python.exe'),integrityValidatorPath:path.join(skill,'container_tools/inspect_presentation_package_integrity.py'),layoutValidatorPath:path.join(skill,'container_tools/inspect_presentation_layout_geometry.py'),layoutArgs:['--expected-slide-size-emu','12192000,6858000','--validate-bullet-geometry','--validate-heading-fit'],explicitTotalSlideCount:8,requiredNativeTableOwnerSlides:[],requiredNativeChartOwnerSlides:[],fontPolicy:{basis:'design',families:[cn]},verifyArtifactToolImport:true,receiptPath:stage+'.json'});
+    receipt=await finalizePresentation({workspaceDir:base,candidatePath:candidate,finalPath:stagedDeck,pythonExecutable:path.join(runtime,'python/python.exe'),integrityValidatorPath:path.join(skill,'container_tools/inspect_presentation_package_integrity.py'),layoutValidatorPath:path.join(skill,'container_tools/inspect_presentation_layout_geometry.py'),layoutArgs:['--expected-slide-size-emu','12192000,6858000','--validate-bullet-geometry','--validate-heading-fit'],explicitTotalSlideCount:9,requiredNativeTableOwnerSlides:[],requiredNativeChartOwnerSlides:[],fontPolicy:{basis:'design',families:[cn]},verifyArtifactToolImport:true,receiptPath:stage+'.json'});
   } finally {
     fs.link=link;
   }

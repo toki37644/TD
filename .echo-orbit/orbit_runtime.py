@@ -142,7 +142,7 @@ class CameraState:
                 self.arrival_start = None
         if self.entered and self.focus >= 0:
             x, y, radius, _ = self.bodies[self.focus]
-            detail = (x, y, (.159 if self.focus == 0 else .199) / radius, 1.)
+            detail = (x, y, (.179 if self.focus == 0 else .199) / radius, 1.)
         else:
             detail = (*self.explore, 1., 0.)
         self.camera = tuple(approach(before, after, dt, rate) for before, after, rate in
@@ -435,7 +435,8 @@ class Atlas:
         self.envelopes = [op(ROOT + 'volume_' + name) for name in SCENES]
         self.cloud = op(ROOT + 'particles')
         self.feedback = op(ROOT + 'feedback_material')
-        self.folds = op(ROOT + 'closeup_feedback')
+        self.closeup = op(ROOT + 'closeup_feedback')
+        self.rms = 0.
         self.cloud.lock = True
         self.last_raster = 0.0
         self.hover_origin = None
@@ -451,12 +452,11 @@ class Atlas:
             for par, value in zip(pars, values):
                 par.val = float(value)
         bass, mid, _, attack = self.state.energy
-        for material in (self.feedback, self.folds):
-            if material is not None:
-                material.par.Drive = float(.16 + .89 * bass + .32 * attack)
-                material.par.Detail = float(.50 + .96 * mid)
-        if self.folds is not None:
-            self.folds.par.Flowtime = self.state.flow_time
+        if self.feedback is not None:
+            self.feedback.par.Drive = float(.16 + .89 * bass + .32 * attack)
+            self.feedback.par.Detail = float(.50 + .96 * mid)
+        if self.closeup is not None:
+            self.closeup.par.Harmonicgain = .5 + 1.5 * self.rms
 
     def audio(self):
         target = self.state.focus + 1 if self.state.entered else 0
@@ -475,7 +475,13 @@ class Atlas:
                 self.sources[i].par.play = False
         # Analyze the same time-sliced stereo audio that supplies the device output.
         signal = self.sources[target].numpyArray()
-        energy = self.spectrum.read(signal.mean(axis=0)) if signal is not None and signal.size else np.zeros(4)
+        if signal is not None and signal.size:
+            mono = signal.mean(axis=0)
+            self.rms = float(np.sqrt(np.mean(mono * mono)))
+            energy = self.spectrum.read(mono)
+        else:
+            self.rms = 0.
+            energy = np.zeros(4)
         energy *= min(1, self.gains[target] * 2) if target else .15
         for i, value in enumerate(energy):
             current = self.state.energy[i]

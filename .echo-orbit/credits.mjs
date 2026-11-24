@@ -78,7 +78,7 @@ type('使用说明', '音乐按 CC BY 4.0 署名。特写星云节选自《宇�
 
 slide.speakerNotes.text = [
   ...visual.map(ref=>`${ref.title}，${ref.artist}，小红书。${ref.url}。图截自用户提供的录屏。`),
-  '天体生成方法参考 mrxccc《TouchDesigner 教程｜音乐星球节奏互动》。在 TouchDesigner 重建反馈、位移、颜色映射与两道亮边合成。https://www.bilibili.com/video/BV1pkRiYpEZh/',
+  '近景天体反馈链参考 mrxccc《TouchDesigner 教程｜音乐星球节奏互动》。按公开画面重建 Outside Luminance 底图、Maximum 回灌和双 Edge 合成，金星色标按成品画面调配。太阳、水星、地球和火星在同一套实时材质上使用各自的配色。https://www.bilibili.com/video/BV1pkRiYpEZh/',
   '音画构思参考，Vivi S《TD 宇宙回响》。https://xhslink.cn/o/7NuVmtgTRWx',
   '天体特写中的星云节选自一粒六元《TD 星际环游 003／宇宙诞生》，取自用户提供的录屏。保留核心星云片段，按天体调色，并叠加实时颗粒。',
   '竖版总览的横向天体排列参考用户提供的侧视星图，原作者未标注。长条尘带、太阳粒子弧和特写粒子参考用户提供的图片与录屏。',

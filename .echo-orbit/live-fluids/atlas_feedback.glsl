@@ -26,8 +26,35 @@ vec3 tutorialInk(vec2 p, int id) {
     return feedbackDye(texture(sTD2DInputs[3], .5 + p*vec2(.204,.362)).rgb, id);
 }
 
-vec3 foldedInk(vec2 p, int id) {
-    return feedbackDye(texture(sTD2DInputs[4], .5 + p*vec2(.192,.341)).rgb, id);
+vec3 closeupInk(vec2 p, int id) {
+    vec3 ink = texture(sTD2DInputs[4], .5 + p*vec2(.213,.379)).rgb;
+    if (id == 2) return ink;
+    // Recolor by original pigment so the different palettes keep the same
+    // transparent membranes, interior folds and small edge highlights.
+    vec3 core[5] = vec3[5](vec3(1.,.34,.055), vec3(.25,.34,.59), vec3(0.),
+                           vec3(.02,.73,.48), vec3(.84,.19,.098));
+    vec3 warm[5] = vec3[5](vec3(1.,.84,.19), vec3(.56,.71,.85), vec3(0.),
+                           vec3(.49,.89,.19), vec3(1.,.58,.24));
+    vec3 vein[5] = vec3[5](vec3(.96,.19,.075), vec3(.49,.40,.87), vec3(0.),
+                           vec3(.10,.44,.94), vec3(.95,.11,.38));
+    vec3 deep[5] = vec3[5](vec3(.10,.35,.72), vec3(.15,.23,.61), vec3(0.),
+                           vec3(.12,.20,.64), vec3(.29,.12,.54));
+    vec3 rim[5] = vec3[5](vec3(.22,.84,.68), vec3(.38,.83,.92), vec3(0.),
+                           vec3(.21,.83,.91), vec3(.19,.73,.78));
+    float peak = max(ink.r, max(ink.g, ink.b));
+    float hot = smoothstep(-.16,.44,ink.r-ink.b);
+    float gold = smoothstep(.17,.72,ink.g) * hot;
+    float violet = smoothstep(.18,.63,ink.b-ink.g) * smoothstep(.39,.91,ink.r);
+    float aqua = smoothstep(.04,.56,ink.g-ink.r*.66);
+    float white = smoothstep(.50,.88,min(ink.r,min(ink.g,ink.b)));
+    vec3 dye = mix(deep[id], rim[id], aqua);
+    dye = mix(dye, core[id], hot);
+    dye = mix(dye, warm[id], gold*.89);
+    dye = mix(dye, vein[id], violet*.79);
+    dye = mix(dye, whiteLight(id), white*.71);
+    float light = dot(ink,vec3(.28,.60,.12));
+    float shade = mix(.74,1.13,smoothstep(.16,.76,light));
+    return dye * peak * shade;
 }
 
 vec3 rotateFeedback(vec2 q, int id, float angle) {
@@ -70,14 +97,20 @@ vec3 bodyLayer(vec3 background, vec2 world, vec2 cursor, vec4 body, int id,
         float taper = 1.-smoothstep(1.86,2.44,r);
         float core = 1.-smoothstep(.68,1.08,r);
         background = background*(1.-visible*.58*core) + corona*taper*visible*(1.-.72*locked*core);
+        float angle = atan(q.y,q.x);
+        float ray = bell(r*sin(3.*angle+.04*sin(time))/.12);
+        float flare = ray * smoothstep(.84,1.11,r) * bell((r-1.04)/.86);
+        vec3 radiance = mix(vec3(1.,.66,.22),vec3(.15,.62,.87),smoothstep(1.,1.67,r));
+        background += radiance * flare * visible * locked * (.18+.08*beat);
         if (locked < .002) return background;
     }
     if (r > 1.34) return background;
     float sphereAmount = id == 0 ? 0. : 1.-locked;
     vec3 sphere = sphereAmount > .002 ? rotateFeedback(q,id,body.w*8.5) : vec3(0.);
     vec2 flatPosition = q/(1.+.037*beat);
-    vec3 sheet = locked > .002 ? foldedInk(flatPosition,id) : vec3(0.);
+    vec3 sheet = locked > .002 ? closeupInk(flatPosition,id) : vec3(0.);
     sheet *= 1.-smoothstep(1.20,1.33,length(flatPosition));
+    if (id == 0) sheet *= 1.18;
     float peak = max(max(sheet.r,sheet.g),sheet.b);
     float flatMask = smoothstep(.015,.24,peak);
     float sphereMask = (1.-smoothstep(.974,1.015,r))*sphereAmount;

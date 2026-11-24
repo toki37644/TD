@@ -51,19 +51,12 @@ def onStart():
 '''
 
 
-def install_native():
-    scene = op('/project1')
-    clock = scene.op('clock')
-    for child in scene.children:
-        if child.valid and child != clock:
-            child.destroy()
-    for asset in list(scene.vfs):
-        asset.destroy()
+def build_graph(scene, gain, resolution):
     namespace = dict(globals())
     helper = HERE / 'build_tutorial_venus.py'
     exec(compile(helper.read_text(encoding='utf-8'), str(helper), 'exec'), namespace)
     make = partial(namespace['make_node'], scene)
-    width, height = FRAME_SIZE
+    width, height = resolution
     size = dict(outputresolution='custom', resolutionw=width, resolutionh=height)
     simplex = dict(seed=1, harmon=2, spread=2, amp=.5, offset=.5, mono=True)
 
@@ -95,7 +88,7 @@ def install_native():
     feedback.par.reset.expr = "op('keyboardin1')[0]"
     field = make(noiseTOP, 'noise3', 1690, 260, feedback, period=.35, harmon=7,
                  seed=1, spread=2, amp=.5, offset=.5, mono=True,
-                 gain=('expr', "float(op('null5')[0])"))
+                 gain=('expr', gain))
     slope = dict(red='hluminance', green='neutral', blue='vluminance', alpha='one',
                  method='prevnext', strength=1)
     first = make(slopeTOP, 'slope1', 1690, 90, feedback, **slope, zeropoint=.3)
@@ -135,6 +128,28 @@ def install_native():
                         bgcolora=1)
     out = make(nullTOP, 'null3', 5470, 175, presentation)
 
+    out.cook(force=True)
+    assert (out.width, out.height) == resolution
+    assert feedback.par.top.eval() == mixed and list(mixed.inputs) == [attenuated, source]
+    assert list(average.inputs) == [field, first, second]
+    assert list(comp_six.inputs) == [comp_five, level_six]
+    return out
+
+
+def install_native():
+    scene = op('/project1')
+    clock = scene.op('clock')
+    for child in scene.children:
+        if child.valid and child != clock:
+            child.destroy()
+    for asset in list(scene.vfs):
+        asset.destroy()
+    helper = HERE / 'build_tutorial_venus.py'
+    scope = dict(globals())
+    exec(compile(helper.read_text(encoding='utf-8'), str(helper), 'exec'), scope)
+    make = partial(scope['make_node'], scene)
+    width, height = FRAME_SIZE
+
     # The selected track belongs to 深空回声. The CHOP routing follows 17:06–18:52.
     scene.vfs.addFile(str(WORKSPACE / '深空回声-音乐试听' / '04-金星.mp3'), overrideName='venus.mp3')
     audio = make(audiofileinCHOP, 'audiofilein1', 365, -565,
@@ -146,6 +161,7 @@ def install_native():
     make(nullCHOP, 'null4', 975, -480, first_range)
     make(nullCHOP, 'null5', 975, -650, second_range)
 
+    out = build_graph(scene, "float(op('null5')[0])", FRAME_SIZE)
     notes = make(textDAT, 'tutorial_notes', 4910, -405)
     notes.text = '''mrxccc · TouchDesigner 音乐星球节奏互动
 https://www.bilibili.com/video/BV1pkRiYpEZh/
@@ -175,11 +191,6 @@ Null4 保留在音频分支，视频中未能确认其最终绑定目标。
             pane.owner = scene
             pane.home()
 
-    out.cook(force=True)
-    assert (out.width, out.height) == FRAME_SIZE
-    assert feedback.par.top.eval() == mixed and list(mixed.inputs) == [attenuated, source]
-    assert list(average.inputs) == [field, first, second]
-    assert list(comp_six.inputs) == [comp_five, level_six]
     issues = [(node.name, node.errors()) for node in scene.children if node.errors()]
     assert not issues, issues
     stamp = datetime.now().strftime('%Y%m%d-%H%M%S')

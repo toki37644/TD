@@ -7,6 +7,41 @@ source = where.parent.parent / 'check_orbit.py'
 scope = dict(globals(), __file__=str(source))
 exec(compile(source.read_text(encoding='utf-8'), str(source), 'exec'), scope)
 
+VENUS_FRAMES = 810
+BODY_FRAMES = 272
+OTHER_BODIES = (0, 1, 3, 4)
+END = VENUS_FRAMES + len(OTHER_BODIES) * BODY_FRAMES
+
+
+def record_other_body(module, native, step, now):
+    app = native.state
+    sequence, frame = divmod(step - VENUS_FRAMES, BODY_FRAMES)
+    body = OTHER_BODIES[sequence]
+    point = (.47, .64)
+    if 34 <= frame <= 65:
+        point = app.center_uv(body)
+        if frame == 65:
+            assert app.hover == body and app.label_alpha > .90
+            app.click(point)
+            assert app.entered and app.focus == body
+    elif 66 <= frame < 236:
+        position = min(1., (frame - 66) / 150.)
+        point = (.23 + .54 * position, .33 + .36 * position)
+    elif frame == 236:
+        if body == 3:
+            module.testing = False
+            try:
+                module.go_back('Escape')
+            finally:
+                module.testing = True
+        else:
+            app.click(module.RETURN)
+        assert not app.entered and app.focus == -1
+    app.advance(now, point, True)
+    if frame == 198:
+        assert app.entered and app.arrival > .99
+        return f'tour-{module.SCENES[body + 1]}'
+
 
 def record_preview(state=None):
     module = op('/project1/orbit_engine').module
@@ -41,9 +76,21 @@ def record_preview(state=None):
     start, step, movie = state
     now = start + step/60.
     app = native.state
+    if step == END:
+        movie.par.record = False
+        movie.cook(force=True)
+        assert not movie.errors(), movie.errors()
+        assert not app.entered and app.focus == -1 and native.track == 0
+        with report.open('a',encoding='utf-8') as log:
+            print('PASS native recording entered all five bodies and returned through the icon and Escape',file=log)
+        run('project.quit(force=True)',delayFrames=5)
+        return
+    capture = None
     outside = (.93,.08)
     left, right = (.23,.31), (.77,.69)
-    if step < 76:
+    if step >= VENUS_FRAMES:
+        capture = record_other_body(module, native, step, now)
+    elif step < 76:
         point, inside = outside, False
     elif step < 104:
         point, inside = (.85,.74), True
@@ -71,7 +118,8 @@ def record_preview(state=None):
         assert app.entered and app.burst is not None
     elif step == 695:
         assert not app.entered
-    app.advance(now, point, inside)
+    if step < VENUS_FRAMES:
+        app.advance(now, point, inside)
     native.audio()
     if step == 170:
         assert app.hover == 2 and app.label_alpha > .9 and app.camera[2] == 1.
@@ -79,22 +127,17 @@ def record_preview(state=None):
         assert app.entered and app.arrival > .99 and native.track == 3
     elif step == 778:
         assert native.track == 0
+    elif capture is not None:
+        assert native.track == app.focus + 1
     native.apply(force=True)
     movie.cook(force=True)
     if step in (75, 170, 248, 328, 403, 561, 646, 778):
+        capture = f'interaction-{step}'
+    if capture is not None:
         out = op('/project1/out_image')
         out.cook(force=True)
         assert not out.errors(), out.errors()
-        out.save(str(where/'frames'/f'interaction-{step}.png'))
-    if step == 810:
-        movie.par.record = False
-        movie.cook(force=True)
-        assert not movie.errors(), movie.errors()
-        assert not app.entered and app.focus == -1
-        with report.open('a',encoding='utf-8') as log:
-            print('PASS recorded hover, transition into Venus, particle burst, and return to overview audio',file=log)
-        run('project.quit(force=True)',delayFrames=5)
-        return
+        out.save(str(where/'frames'/f'{capture}.png'))
     state[1] += 1
     run('args[0](args[1])', record_preview, state, delayFrames=1)
 

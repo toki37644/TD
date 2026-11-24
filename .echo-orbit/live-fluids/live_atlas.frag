@@ -105,6 +105,7 @@ vec3 nebulaLayer(vec2 screen, vec2 pointer, int scene) {
         // Keep the diagonal sweep of the source in the Earth scene.
         source = vec2(.50, .505) + vec2(.465 * field.x + .045 * field.y, .49 * field.y - .085 * field.x);
         tint = vec3(1.08, 1.30, 1.90);
+        envelope = .68;
     } else {
         // Dust fans fork toward the upper left in two overlapping streaks.
         vec2 fan = turn(-2.53) * (field - vec2(.06,-.033));

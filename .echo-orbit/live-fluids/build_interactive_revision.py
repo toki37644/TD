@@ -89,25 +89,26 @@ def install_native():
     scene.op('orbit_engine').text = (HERE.parent/'orbit_runtime.py').read_text(encoding='utf-8')
     scene.op('atlas_pixel').text = revision_shader()
 
-    builder_path = HERE/'build_tutorial_venus.py'
-    builder_scope = dict(globals())
-    exec(compile(builder_path.read_text(encoding='utf-8'), str(builder_path), 'exec'), builder_scope)
-    for index, name in enumerate(('feedback_material', 'closeup_feedback'), start=3):
+    for index, name, filename in ((3, 'feedback_material', 'build_tutorial_venus.py'),
+                                  (4, 'closeup_feedback', 'rebuild_tutorial_graph.py')):
         previous = scene.op(name)
         if previous is not None:
             previous.destroy()
-        folded = index == 4
         material = scene.create(baseCOMP, name)
         material.nodeX, material.nodeY = 210, -305 - 135 * (index - 3)
         material.color = (.27,.23,.41)
         page = material.appendCustomPage('Motion')
-        page.appendFloat('Drive', label='Low Frequency and Attack')[0].val = .16
-        page.appendFloat('Detail', label='Mid Frequencies')[0].val = .50
-        if folded:
-            page.appendFloat('Flowtime', label='Flow Time')[0].val = 0.
-        final = builder_scope['build_feedback_material'](
-            material, 'float(parent().par.Drive)', 'float(parent().par.Detail)', (960, 540),
-            folded=folded)
+        builder_path = HERE / filename
+        scope = dict(globals(), __file__=str(builder_path))
+        exec(compile(builder_path.read_text(encoding='utf-8'), str(builder_path), 'exec'), scope)
+        if index == 3:
+            page.appendFloat('Drive', label='Low Frequency and Attack')[0].val = .16
+            page.appendFloat('Detail', label='Mid Frequencies')[0].val = .50
+            final = scope['build_feedback_material'](
+                material, 'float(parent().par.Drive)', 'float(parent().par.Detail)', (960, 540))
+        else:
+            page.appendFloat('Harmonicgain', label='Audio Harmonic Gain')[0].val = .50
+            final = scope['build_graph'](material, 'float(parent().par.Harmonicgain)', scope['FRAME_SIZE'])
         output = material.create(outTOP, 'out1')
         output.nodeX, output.nodeY = final.nodeX + 205, 160
         output.inputConnectors[0].connect(final)
@@ -117,6 +118,8 @@ def install_native():
         final.cook(force=True)
         assert not final.errors(), final.errors()
         assert not output.errors(), output.errors()
+        issues = [(node.name, node.errors()) for node in material.children if node.errors()]
+        assert not issues, issues
 
     for asset in list(scene.vfs):
         if asset.name == 'body-volumes.png':
