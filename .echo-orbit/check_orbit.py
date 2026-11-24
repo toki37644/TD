@@ -115,6 +115,92 @@ def save_frame(name):
     final_top.save(str(qa_dir / (name + '.png')))
 
 
+def check_scroll():
+    for i, radius in enumerate(qa_mod.RADII):
+        state = qa_mod.CameraState(0.)
+        state.advance(3., (.5,.5), False)
+        state.scroll(5)
+        assert state.detail_zoom == qa_mod.DETAIL_ZOOM
+        state.click(state.center_uv(i))
+        assert state.focus == i
+        for _ in range(110):
+            state.advance(state.last + 1./60, (.5,.5), True)
+        baseline = state.camera[2]
+        state.scroll(4, inside=False)
+        assert state.detail_zoom == qa_mod.DETAIL_ZOOM
+        state.scroll(1)
+        assert state.camera[2] == baseline
+        state.advance(state.last + 1./60, (.5,.5), True)
+        assert baseline < state.camera[2] < state.detail_zoom
+        state.scroll(400)
+        assert abs(state.detail_zoom * radius - qa_mod.INSPECT_RADIUS) < 1e-6
+        for _ in range(66):
+            state.advance(state.last + 1./60, (.5,.5), True)
+        assert abs(state.camera[2] - state.detail_zoom) < .003
+        enlarged = state.camera[2]
+        state.scroll(-400)
+        state.advance(state.last + 1./60, (.5,.5), True)
+        assert qa_mod.DETAIL_ZOOM < state.camera[2] < enlarged
+        for _ in range(66):
+            state.advance(state.last + 1./60, (.5,.5), True)
+        assert abs(state.camera[2] - baseline) < .003
+        state.scroll(2)
+        state.click(qa_mod.RETURN)
+        assert state.detail_zoom == qa_mod.DETAIL_ZOOM and not state.entered
+    panel = op('/project1/viewport')
+    wheel = op('/project1/wheel_zoom')
+    assert panel.par.mousewheel.eval() and wheel.par.valuechange.eval()
+    assert wheel.par.panelvalue.eval() == 'wheel' and wheel.par.panels.eval() == panel
+    check_log('PASS native wheel binding and all five zoom ranges, smoothing, bounds, and return reset')
+    original = app.state
+    probe = qa_mod.CameraState(monotonic()-3.)
+    probe.advance(monotonic(), (.5,.5), True)
+    probe.click(probe.center_uv(2))
+    assert probe.entered and probe.focus == 2
+    app.state = probe
+    try:
+        panel.interactMouse(.5,.5)
+        panel.interactMouse(.5,.5,wheel=1.)
+        assert probe.detail_zoom > qa_mod.DETAIL_ZOOM, (panel.panel.inside.val, wheel.errors())
+        panel.interactMouse(.5,.5,wheel=-1.)
+        assert abs(probe.detail_zoom - qa_mod.DETAIL_ZOOM) < 1e-6, wheel.errors()
+    finally:
+        app.state = original
+    check_log('PASS viewport-generated wheel events traverse the release callback in both directions')
+
+
+def check_globe_mask(index, nominal):
+    # Render the real coverage calculation alone for measurement. The changing
+    # feedback, halo, and background otherwise make edge detection ambiguous.
+    pixel = op('/project1/atlas_pixel')
+    original = pixel.text
+    source = original.split('void main() {', 1)[0]
+    marker = '    vec3 globe = locked*silhouette'
+    assert marker in source
+    source = source.replace(marker, '    return vec3(silhouette);\n' + marker, 1)
+    source += '''
+void main() {
+    vec2 world = (vUV.st-.5)*ASPECT/uCamera.z+uCamera.xy;
+    int id = int(floor(uScene.x+.5));
+    vec4 bodies[5] = vec4[5](uSun,uMercury,uVenus,uEarth,uMars);
+    vec3 mask = bodyLayer(vec3(0.),world,vec2(0.),bodies[id],id,1.,true,uPointer.x);
+    fragColor = TDOutputSwizzle(vec4(mask,1.));
+}
+'''
+    try:
+        pixel.text = source
+        final_top.cook(force=True)
+        assert not op('/project1/solar_atlas').errors()
+        rows, columns = np.nonzero(final_top.numpyArray()[:,:,0] > .5)
+    finally:
+        pixel.text = original
+        final_top.cook(force=True)
+    measured = (int(columns.max()-columns.min()+1), int(rows.max()-rows.min()+1))
+    assert all(abs(diameter-2.*nominal) <= 2. for diameter in measured), (index, measured, nominal)
+    assert abs(measured[0]-measured[1]) <= 1, (index, measured)
+    check_log(f'PASS {qa_mod.SCENES[index]} circular diameter {measured[0]} x {measured[1]} px, expected {2.*nominal:.1f}')
+
+
 def check_globe(index):
     app.apply(force=True)
     final_top.cook(force=True)
@@ -124,10 +210,8 @@ def check_globe(index):
     u, v = app.state.center_uv(index - 1)
     x, y = round(u*width), round(v*height)
     nominal = qa_mod.RADII[index - 1] * qa_mod.DETAIL_ZOOM * height
-    crop_radius = round(nominal) + 9
-    roi = np.s_[y-crop_radius:y+crop_radius, x-crop_radius:x+crop_radius, :3]
     depth = round(nominal*.53)
-    center = np.s_[crop_radius-depth:crop_radius+depth, crop_radius-depth:crop_radius+depth]
+    roi = np.s_[y-depth:y+depth, x-depth:x+depth, :3]
 
     def surface(yaw, pitch):
         app.state.view = (view[0] + yaw, view[1] + pitch)
@@ -135,25 +219,14 @@ def check_globe(index):
         final_top.cook(force=True)
         return final_top.numpyArray()[roi].copy()
 
-    disc = first[roi]
-    yaw_change = np.abs(disc - surface(1.18, 0.))
-    pitch_change = np.abs(disc - surface(0., -.86))
-    yaw_delta = np.mean(yaw_change[center])
-    pitch_delta = np.mean(pitch_change[center])
+    baseline = first[roi]
+    yaw_delta = np.mean(np.abs(baseline - surface(1.18, 0.)))
+    pitch_delta = np.mean(np.abs(baseline - surface(0., -.86)))
     assert min(yaw_delta, pitch_delta) > .006, (index, yaw_delta, pitch_delta)
-    # Only the projected surface changes when yaw or pitch changes in this frame.
-    support = np.maximum(yaw_change,pitch_change).max(axis=2) > .008
-    rows, columns = np.nonzero(support)
-    measured = (int(columns.max()-columns.min()+1), int(rows.max()-rows.min()+1))
-    tolerance = max(6., nominal*.05)
-    assert all(abs(diameter-2.*nominal) < tolerance for diameter in measured), (index, measured, nominal)
-    assert abs(measured[0]-measured[1]) <= max(3., nominal*.021), (index, measured)
-    check_log(f'PASS {qa_mod.SCENES[index]} circular diameter {measured[0]} x {measured[1]} px, expected {2.*nominal:.1f}')
     if index == 3:
-        baseline = disc[center]
         previous = baseline
         for step in range(1, 9):
-            turned = surface(step*tau/8.,0.)[center]
+            turned = surface(step*tau/8.,0.)
             assert .006 < np.mean(np.abs(previous-turned)) < .52, step
             previous = turned
         assert np.mean(np.abs(baseline-turned)) < .008
@@ -165,6 +238,7 @@ def check_globe(index):
     assert np.count_nonzero(title[62:107] > .60) > 100, index
     assert np.count_nonzero(title[114:143] > .60) > 24, index
     check_log(f'PASS {qa_mod.SCENES[index]} rotates on both axes ({yaw_delta:.3f}, {pitch_delta:.3f}), both title lines')
+    check_globe_mask(index, nominal)
 
 
 def check_nebula(index):
@@ -259,6 +333,11 @@ def begin(index):
 
 
 check_states()
+try:
+    check_scroll()
+except Exception:
+    check_log(format_exc())
+    raise
 assert material.op('comp1').par.operand.eval() == 'outsideluminance'
 assert material.op('comp3').par.operand.eval() == 'maximum'
 assert material.op('feedback1').par.top.eval() == material.op('comp3')

@@ -116,6 +116,14 @@ def record_preview(state=None):
         point, inside = (.08,.22), True
     if step in (204, 371, 695):
         app.click(point)
+    wheel = 1 if step in range(337,419,9) else -1 if step in range(548,649,10) else 0
+    if wheel:
+        native.panel.interactMouse(*point)
+        module.testing = False
+        try:
+            native.panel.interactMouse(*point, wheel=wheel)
+        finally:
+            module.testing = True
     if step == 204:
         assert app.entered and app.focus == 2
     elif step == 371:
@@ -130,6 +138,16 @@ def record_preview(state=None):
         assert module.screen_distance(app.center_uv(2), (.5,.5)) < .009
     elif step == 328:
         assert app.entered and app.arrival > .99 and native.track == 3
+    elif step == 500:
+        assert app.camera[2] > module.DETAIL_ZOOM*4.0
+        assert abs(app.camera[2] - app.detail_zoom) < .002
+        capture = 'wheel-zoomed'
+    elif step == 678:
+        assert app.detail_zoom == module.DETAIL_ZOOM
+        assert abs(app.camera[2] - module.DETAIL_ZOOM) < .045
+        capture = 'wheel-reset'
+        with report.open('a',encoding='utf-8') as log:
+            print('PASS native viewport wheel events zoomed in and reset during the recording',file=log)
     elif step == 778:
         assert native.track == 0
     elif capture is not None:

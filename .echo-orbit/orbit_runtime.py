@@ -20,6 +20,8 @@ SCENES = ('overview', 'sun', 'mercury', 'venus', 'earth', 'mars')
 # The overview previously imposed a .015 render minimum on Mercury.
 RADII = (.065, .015, .023, .027, .020)
 DETAIL_ZOOM = .78 * ASPECT / (2. * max(RADII))
+INSPECT_RADIUS = 1.35 * ASPECT / 2.
+WHEEL_SCALE = 1.18
 AXIS_POSITIONS = (-.205, -.076, .024, .132, .232)
 AXIS_PHASES = (0, 1.37, 2.67, .87, 1.54)
 ORBIT_SPEEDS = (0, .27, .21, .16, .13)
@@ -68,6 +70,7 @@ class CameraState:
         self.time = self.dt = self.flow_time = 0.0
         self.bodies = orbit_positions(0.)
         self.camera = (0., 0., 1., 0.)
+        self.detail_zoom = DETAIL_ZOOM
         self.camera_velocity = (0., 0.)
         self.explore = (0., 0.)
         self.pointer = (.5, .5)
@@ -194,6 +197,7 @@ class CameraState:
         self.arrival = 1.
         self.arrival_start = None
         self.focus = self.hover = -1
+        self.detail_zoom = DETAIL_ZOOM
         self.hover_candidate = -1
         self.hover_anchor = self.hover_left_at = self.hover_released_at = None
         self.overview_settle_until = self.last + RETURN_SECONDS
@@ -226,6 +230,13 @@ class CameraState:
             self.pan_handoff = None
             self.view = (0., 0.)
 
+    def scroll(self, steps, inside=True):
+        if not inside or not self.entered or not steps:
+            return
+        limit = INSPECT_RADIUS / self.bodies[self.focus][2]
+        scale = WHEEL_SCALE ** max(-32., min(32., float(steps)))
+        self.detail_zoom = min(limit, max(DETAIL_ZOOM, self.detail_zoom * scale))
+
     def advance(self, now, position, inside):
         self.dt = max(0., min(.080, now - self.last))
         self.last = now
@@ -244,7 +255,7 @@ class CameraState:
                 self.arrival_start = None
         if self.entered and self.focus >= 0:
             x, y, _, _ = self.bodies[self.focus]
-            detail = (x, y, DETAIL_ZOOM, 1.)
+            detail = (x, y, self.detail_zoom, 1.)
             camera_seconds = .62
         elif self.hover >= 0:
             detail = (*self.bodies[self.hover][:2], 1., 0.)
@@ -263,7 +274,8 @@ class CameraState:
         x, vx = glide(self.camera[0], self.camera_velocity[0], detail[0], dt, camera_seconds)
         y, vy = glide(self.camera[1], self.camera_velocity[1], detail[1], dt, camera_seconds)
         self.camera_velocity = (vx, vy)
-        self.camera = (x, y, approach(self.camera[2], detail[2], dt, 4.9),
+        zoom_rate = 8.2 if self.entered and self.arrival >= 1. else 4.9
+        self.camera = (x, y, approach(self.camera[2], detail[2], dt, zoom_rate),
                        approach(self.camera[3], detail[3], dt, 4.3))
         if self.focus < 0 and self.camera[3] < .008:
             self.shown = -1
@@ -667,6 +679,11 @@ def tick():
 def click():
     if not testing:
         atlas().click()
+
+
+def scroll(value):
+    if not testing and value:
+        atlas().state.scroll(value)
 
 
 def go_back(value):

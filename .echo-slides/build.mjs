@@ -5,7 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const base = process.cwd();
-const qa = path.join(base, '.echo-orbit', '.venus-build', 'size-revision');
+const qa = path.join(base, '.echo-orbit', '.venus-build', 'wheel-revision');
 const tmp = path.join(qa, 'slides');
 const stock = path.join(base, '.echo-orbit', 'stock');
 await fs.mkdir(tmp,{recursive:true});
@@ -61,8 +61,8 @@ const idea=slide();
 header(idea,'作品简介');
 text(idea,'作品思路标题','从星图进入\n五颗天体',65,156,460,161,55,C.ink,true);
 text(idea,'作品思路','靠近画面边缘可平移总览。\n悬停时天体移到中央。点击后，\n天体经粒子聚散进入近景。',67,351,470,130,26,C.soft);
-text(idea,'作品力学','移动指针转动球体。\n专属音乐与指针共同带动星尘。',67,515,475,85,24,C.mint);
-await img(idea,cap('interaction-403'),'金星锁定近景',551,169,665,374,'contain');
+text(idea,'作品力学','移动指针转动球体。\n使用滚轮查看球面细节。',67,515,475,85,24,C.mint);
+await img(idea,cap('interaction-328'),'金星锁定近景',551,169,665,374,'contain');
 text(idea,'图注','金星近景',551,554,665,38,18,C.soft);
 note(idea,'总览、太阳和四颗行星各有一段音乐。进入近景后顶部显示中英文名称。移动鼠标转动球体并吸引粒子，点击近景可以散开局部粒子。Esc 或返回图标回到总览。');
 
@@ -132,7 +132,7 @@ header(interact,'交互方案',C.black);
 const acts=[
  {x:66,t:'居中并放大',p:'停稳后镜头约 1 秒滑向天体。\n移开后镜头复位，名称消散。',f:'hover-sun',s:'悬停天体'},
  {x:456,t:'聚散进入近景',p:'天体先散开，再聚合为球体。\n顶部显示双语名称。',f:'interaction-248',s:'点击天体'},
- {x:846,t:'转动球体与牵引星尘',p:'移动指针即可转动球体。\n星尘跟随指针，点击时向外散开。',f:'interaction-561',s:'移动或点击近景'}];
+ {x:846,t:'旋转与查看细节',p:'移动指针转动球体，星尘跟随。\n滚轮上推放大，下滚缩回。',f:'wheel-zoomed',s:'移动指针与滚动'}];
 for(const a of acts){
  await img(interact,cap(a.f),a.t+'画面细节',a.x,149,365,260,'cover');
  text(interact,a.s,a.s,a.x,421,365,32,19,C.muted);
@@ -145,7 +145,7 @@ const logic=slide();
 header(logic,'交互与声音节点图');
 text(logic,'实现说明','点击切换场景与音轨。实时频段和指针共同驱动粒子与色束。',67,126,1170,53,26,C.soft);
 const pane=node(logic,'操作面板','viewport\n鼠标位置与按键',64,291,187,85);
-const ev=node(logic,'按键边沿','left_click / return_key\n进入、散逸、返回',289,291,201,85);
+const ev=node(logic,'按键边沿','点击 / 滚轮 / Esc\n进入、缩放、返回',289,291,201,85);
 const rt=node(logic,'交互状态','orbit_engine\n镜头、旋转与音频分析',568,291,215,85,C.amber);
 const pic=node(logic,'视觉响应','solar_atlas\n星球、散逸与星云',937,291,271,85);
 const timer=node(logic,'逐帧时钟','clock\n逐帧更新',568,189,215,66,C.amber);
@@ -166,15 +166,15 @@ text(demo,'演示重点','悬停居中、球体旋转与星尘',67,129,634,53,30
 const cue=[
   ['0–3 秒','沿画面边缘平移总览。\n悬停金星，观察居中与英文名。'],
   ['3–6 秒','点击进入金星近景。\n看双语标题，听音轨切换。'],
-  ['6–13 秒','移动指针转动球体并牵引星尘。\n点左上方箭头返回。'],
+  ['6–13 秒','滚轮放大查看金星，再缩回。\n点左上方箭头返回。'],
   ['13–35 秒','依次进入太阳、水星、地球、火星。\n对比球面配色、星云与音轨。']];
 for(let i=0;i<cue.length;i++){
   const y=213+i*96;
   text(demo,'时间 '+i,cue[i][0],68,y,153,68,28,C.black,true);
   text(demo,'操作 '+i,cue[i][1],235,y,461,68,24,C.black);
 }
-await img(demo,cap('interaction-646'),'指针牵引下的金星尘幕',717,159,494,213,'contain');
-text(demo,'第一轮截图图注','金星尘幕',717,377,494,30,20,C.muted);
+await img(demo,cap('wheel-zoomed'),'滚轮放大后的金星球面',717,159,494,213,'contain');
+text(demo,'第一轮截图图注','滚轮放大后的金星',717,377,494,30,20,C.muted);
 await img(demo,cap('tour-earth'),'地球近景的极光带',717,419,494,213,'contain');
 text(demo,'第二轮截图图注','地球极光带',717,637,494,30,20,C.muted);
 text(demo,'讲解提示','留意每次切换后的音乐和粒子走向。',68,620,633,47,21,C.muted);

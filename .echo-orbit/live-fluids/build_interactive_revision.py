@@ -33,6 +33,10 @@ def onFrameStart(frame):
     op('/project1/orbit_engine').module.tick()
 '''
 
+WHEEL_CALLBACK = '''def onValueChange(panelValue, oldValue=None):
+    op('/project1/orbit_engine').module.scroll(panelValue.val)
+'''
+
 LABEL_ATLAS = r'''
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
@@ -147,7 +151,17 @@ def install_native():
     engine = scene.op('orbit_engine').module
     width, height = engine.FRAME_SIZE
     shader.par.resolutionw, shader.par.resolutionh = width, height
-    scene.op('viewport').par.w, scene.op('viewport').par.h = width, height
+    panel = scene.op('viewport')
+    panel.par.w, panel.par.h = width, height
+    panel.par.mousewheel = True
+    wheel = scene.op('wheel_zoom')
+    if wheel is None:
+        wheel = scene.create(panelexecuteDAT, 'wheel_zoom')
+    wheel.nodeX, wheel.nodeY = -185, -138
+    wheel.par.panels = panel.path
+    wheel.par.panelvalue = 'wheel'
+    wheel.par.offtoon, wheel.par.ontooff, wheel.par.valuechange = False, False, True
+    wheel.text = WHEEL_CALLBACK
     names = 'body-names-bilingual.png'
     for asset in list(scene.vfs):
         if asset.name in ('body-names.png', 'body-names-en.png', names, 'nebula-motion.mp4', 'spinning-galaxy.mp4'):
@@ -193,7 +207,7 @@ def verify_native(verification):
 
 
 def stage():
-    folder = HERE.parent / '.venus-build' / 'size-revision'
+    folder = HERE.parent / '.venus-build' / 'wheel-revision'
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / 'Interactive-stage.toe'
     from prepare_install import dat
