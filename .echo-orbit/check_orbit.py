@@ -271,12 +271,13 @@ def render_track(index, started):
             run('args[0](args[1],args[2])', render_track, index, started, delayFrames=1)
             return
         assert app.track == index
-        signal = app.sources[index].numpyArray()
+        signal = app.pcm.source if app.pcm is not None else app.sources[index].numpyArray()
         output = mix.numpyArray()
         assert signal is not None and signal.size and abs(signal).max() > .003, index
         assert output is not None and output.size and abs(output).max() > .002, index
         assert max(app.state.energy) > .014, (index, app.state.energy)
-        assert not app.sources[index].errors(), app.sources[index].errors()
+        source = app.audio_chop if app.pcm is not None else app.sources[index]
+        assert not source.errors(), source.errors()
         assert not op('/project1/audio_device').errors(), op('/project1/audio_device').errors()
         gain = material.op('noise3').par.gain.eval()
         assert app.rms > .001 and abs(gain - (.5 + 1.5 * app.rms)) < 1e-5
@@ -305,11 +306,11 @@ def check_motion():
     state.pointer, state.intent = (.20, .69), 1.
     state.motion = 1.
     app.apply(force=True)
-    first = app.particles.render(state)
+    first = app.particles.render(state).copy()
     save_frame('7_cursor_left')
     state.pointer = (.79, .67)
     app.apply(force=True)
-    second = app.particles.render(state)
+    second = app.particles.render(state).copy()
     save_frame('8_cursor_right')
     assert np.count_nonzero(first != second) > 5000
     state.energy[:] = (.86, .70, .58, .71)

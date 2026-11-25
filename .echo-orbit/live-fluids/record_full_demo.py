@@ -207,7 +207,8 @@ def record_native():
     native.state = route.state
     scene.op('audio_device').par.active = False
     for source in native.sources:
-        source.par.play = False
+        if source is not None:
+            source.par.play = False
     project.realTime = False
     root.time.play = True
     movie = scene.create(moviefileoutTOP,'full_demo_movie')

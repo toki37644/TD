@@ -1,6 +1,6 @@
 # 深空回声 TouchDesigner 节点讲解
 
-打开 [深空回声-彩雾交互版.toe](深空回声-彩雾交互版.toe)，进入 `/project1`。作品的交互由一份 Python 状态脚本统一管理。五路 TOP 图像汇入一个 GLSL Multi TOP，六路立体声通过各自的音量节点合成。球体、星云、星尘和标题在同一张 720 × 1280 的画面中渲染。
+打开 [深空回声-彩雾交互版.toe](深空回声-彩雾交互版.toe)，进入 `/project1`。作品的交互由一份 Python 状态脚本统一管理。五路 TOP 图像汇入一个 GLSL Multi TOP，六段立体声音轨由一个 Script CHOP 输出。球体、星云、星尘和标题在同一张 720 × 1280 的画面中渲染。
 
 [完整交互演示](深空回声·完整交互演示.mp4)有可见的指针、点击波纹和滚轮方向标记。下面用工程里的原节点名讲搭建顺序，附录列出保存于工程中的节点、连线和常用参数引用。
 
@@ -17,7 +17,7 @@ planet_names          ── 输入 2 ├→ solar_atlas → out_image → viewp
 feedback_material/out1 ─ 输入 3 │
 closeup_feedback/out1 ── 输入 4 ┘
 
-audio_各场景 → volume_各场景 → music_mix → audio_device
+orbit-audio.npz → orbit_engine → audio_pcm → music_mix → audio_device
 ```
 
 图像线接 TOP，音频线接 CHOP。点击脚本、GLSL 源码、Feedback Target 和窗口显示的来源通过参数引用设置。读网络时，可以先看右侧参数页，再判断有哪些依赖没有画成连线。
@@ -26,7 +26,7 @@ audio_各场景 → volume_各场景 → music_mix → audio_device
 
 | 节点 | 怎么搭、接到哪里 |
 | --- | --- |
-| `/project1` Base COMP | 放入作品的图像、音频和控制节点。内部 VFS 嵌入六段 MP3 和名称图集，参数中用 `vfs:/project1:文件名` 读取。 |
+| `/project1` Container COMP | 放入作品的图像、音频和控制节点。内部 VFS 嵌入六段 MP3、PCM 音轨包和名称图集。可以用 `vfs:/project1:文件名` 或 `op('/project1').vfs` 读取。 |
 | `out_image` Null TOP | 接 `solar_atlas`。这是供窗口、预览和录制共用的最终画面口。 |
 | `viewport` Container COMP | 宽 720、高 1280，背景 TOP 指向 `out_image`。启用 **Use Mouse Wheel**。脚本从这里读 `inside` 和 `insideu/insidev`，点击时取 `u/v`。TD 的 V 轴从下往上。 |
 | `/perform` Window COMP | 将 **Window Operator** 设为 `/project1/viewport`，窗口水平、垂直居中。关闭窗口的 **Close on Escape**，让 Esc 交给作品的返回事件。 |
@@ -97,7 +97,7 @@ audio_各场景 → volume_各场景 → music_mix → audio_device
 
 ## 4. closeup_feedback 近景细节层
 
-进入 `/project1/closeup_feedback`。它和上一套同名节点各自在自己的 Base 中运行，回灌目标和边缘处理尤其值得分开看。
+进入 `/project1/closeup_feedback`。它和上一套同名节点各自在自己的 Base 中运行。`orbit_engine` 在进入近景时开启这个 Base 的 **Allow Cooking**，返回过渡结束后暂停这组节点，减少总览的逐帧计算。
 
 | 步骤 | 节点与操作 |
 | --- | --- |
@@ -129,18 +129,20 @@ audio_各场景 → volume_各场景 → music_mix → audio_device
 
 ## 6. 六路音频和频段怎么接
 
-| 场景 | Audio File In CHOP | Math CHOP | 内置音轨 |
-| --- | --- | --- | --- |
-| 总览 | `audio_overview` | `volume_overview` | Computations in a Snowstorm |
-| 太阳 | `audio_sun` | `volume_sun` | Aphelion |
-| 水星 | `audio_mercury` | `volume_mercury` | Machina |
-| 金星 | `audio_venus` | `volume_venus` | Petrichor |
-| 地球 | `audio_earth` | `volume_earth` | Childhood |
-| 火星 | `audio_mars` | `volume_mars` | Resonance |
+| 场景 | PCM 音轨键 | 内置音轨 |
+| --- | --- | --- |
+| 总览 | `overview` | Computations in a Snowstorm |
+| 太阳 | `sun` | Aphelion |
+| 水星 | `mercury` | Machina |
+| 金星 | `venus` | Petrichor |
+| 地球 | `earth` | Childhood |
+| 火星 | `mars` | Resonance |
 
-每条 Audio File In 读取 VFS 里的 MP3，并给对应的 Math CHOP。六个 Math 接入 `music_mix`，用 **Combine CHOPs = Add** 做立体声相加，再接 `audio_device` Audio Device Out。切场景时脚本 cue 新音轨，渐入到约 0.52，旧音轨逐渐淡出后停止。回总览时也走同一套淡入淡出。
+将六段音轨转换成 44.1 kHz、16 位立体声 PCM，打成 `orbit-audio.npz` 并嵌到 `/project1` 的 VFS。`orbit_engine` 启动时把音轨载入内存。切场景时从新音轨起点逐样本淡入，旧音轨同时淡出。音轨播完后由内存中的样本位置回绕。
 
-音频分析在 `orbit_engine` 内完成。它读取当前音轨的时间切片，双声道取平均后算 RMS。2048 点滑动缓冲配合 Hann 窗再做 FFT，取 28–160 Hz、160–1700 Hz、1700–7200 Hz 三段，并用频谱的正向变化量估计瞬态。分析结果经过平滑后给 `uAudio`、星尘速度和反馈材质。项目的六路 Math 是音量包络，分析参数在 Python 里改。
+创建 `audio_pcm` Script CHOP，开启 **Time Slice**，将 **Callbacks** 指向 `audio_pcm_callbacks`。回调将混好的采样写成双声道时间切片，依次接 `music_mix` 和 `audio_device`。录制时也可直接将 `music_mix` 指定为录音源。
+
+音频分析在 `orbit_engine` 内完成。它读取当前音轨的采样，双声道取平均后算 RMS。2048 点滑动缓冲配合 Hann 窗再做 FFT，取 28–160 Hz、160–1700 Hz、1700–7200 Hz 三段，并用频谱的正向变化量估计瞬态。分析结果经过平滑后给 `uAudio`、星尘速度和反馈材质。
 
 ## 7. 按实际工程复搭的顺序
 
@@ -148,7 +150,7 @@ audio_各场景 → volume_各场景 → music_mix → audio_device
 2. **单独跑通两套材质。** 先验证每个 `feedback1` 的目标、反馈重置和 Ramp 输入，再在两个 `out1` 检查连续几帧。两套回灌分别指向 Cross 和 Maximum。
 3. **按编号接五路图像。** 配好 GLSL 的 Pixel Shader、名称图集及 12 组向量参数，让 `clock` 逐帧写入并确认开头能显示横轴星图。
 4. **接面板事件。** 先测悬停和点击，再测滚轮两个方向，以及箭头、Esc 返回。滚轮是瞬时值，所以用 Panel Execute DAT 监听变化。
-5. **接声音并验收。** 六路音源各过一个 Math，合到 `music_mix`。依次进入五颗天体，确认音轨交换、星尘受指针牵引、再次进入时恢复基础倍率。
+5. **接声音并验收。** 将 `audio_pcm` 的立体声接入 `music_mix → audio_device`。依次进入五颗天体，确认音轨交叉淡化、播完后循环、星尘受指针牵引、再次进入时恢复基础倍率。
 6. **录制。** 用 Movie File Out TOP 接 `out_image`。短录制可将 **Audio CHOP** 指向 `music_mix` 同时录音。这次完整版将原工程画面和六段原声分开处理，按同一场景切换和音量包络混音，再叠加录下的指针坐标、动作标记和字幕。 [录制脚本](.echo-orbit/live-fluids/record_full_demo.py) · [Movie File Out TOP 手册](https://derivative.ca/UserGuide/Movie_File_Out_TOP)
 
 ## 演示视频定位
@@ -169,10 +171,10 @@ audio_各场景 → volume_各场景 → music_mix → audio_device
 - **`/local` 根工具。** `set_variables → variables` 提供本地变量表，`shortcuts` 读取安装目录的面板快捷键表，`master_beat` 提供默认节拍工具。
 - **`/local/time`。** `time1` 的时间通道经 `resample2 → math10 → math11 → syncframe` 送到 `hold1`。另一支由 `rate → pausemath → cframe` 推进帧数。`independent` 与 `scrubber` 在时间来源之间取值，最终送 `clock`。表、常量和参数回调负责状态、范围或覆盖参数。
 - **`/local/maps`。** `master` 保存映射组件，`select1 → select2` 是两级选取，`replicator1` 和其回调处理映射实例。
-- **`/local/midi`。** `device`、`midi_inputs`、`midi_outputs` 和 `userdevices` 管理默认 MIDI 配置。`template` 内的表定义按钮、滑块和属性。进入 `mapmaster1` 后，`midiinmap → out1` 提供输入映射，`collect_buttons → buttons` 与 `collect_sliders → sliders` 提供默认控制通道，另有 `midiout` 和 CHOP Execute。作品的播放和音频分析从 `/project1/audio_*` 取得。
+- **`/local/midi`。** `device`、`midi_inputs`、`midi_outputs` 和 `userdevices` 管理默认 MIDI 配置。`template` 内的表定义按钮、滑块和属性。进入 `mapmaster1` 后，`midiinmap → out1` 提供输入映射，`collect_buttons → buttons` 与 `collect_sliders → sliders` 提供默认控制通道，另有 `midiout` 和 CHOP Execute。
 
 
-共 **234 个节点**。标记为「运行时」的条目由 TouchDesigner 模板或 Palette 帮助组件展开。
+共 **224 个节点**。标记为「运行时」的条目由 TouchDesigner 模板或 Palette 帮助组件展开。
 
 ### `/`
 
@@ -188,18 +190,14 @@ audio_各场景 → volume_各场景 → music_mix → audio_device
 | --- | --- | --- | --- |
 | `atlas_pixel` | DAT · `text` | — | — |
 | `audio_device` | CHOP · `audiodevout` | `music_mix` | — |
-| `audio_earth` | CHOP · `audiofilein` | — | File `vfs:/project1:earth.mp3` |
-| `audio_mars` | CHOP · `audiofilein` | — | File `vfs:/project1:mars.mp3` |
-| `audio_mercury` | CHOP · `audiofilein` | — | File `vfs:/project1:mercury.mp3` |
-| `audio_overview` | CHOP · `audiofilein` | — | File `vfs:/project1:overview.mp3` |
-| `audio_sun` | CHOP · `audiofilein` | — | File `vfs:/project1:sun.mp3` |
-| `audio_venus` | CHOP · `audiofilein` | — | File `vfs:/project1:venus.mp3` |
+| `audio_pcm` | CHOP · `script` | — | Callbacks `/project1/audio_pcm_callbacks` |
+| `audio_pcm_callbacks` | DAT · `text` | — | 从 `/project1/orbit_engine` 读取混音缓冲 |
 | `clock` | DAT · `execute` | — | — |
 | `closeup_feedback` | COMP · `base` | — | — |
 | `escape_to_overview` | DAT · `panelexec` | — | Panels `/project1/viewport` · Panel Value `key` |
 | `feedback_material` | COMP · `base` | — | — |
 | `left_click` | DAT · `panelexec` | — | Panels `/project1/viewport` · Panel Value `lselect` |
-| `music_mix` | CHOP · `math` | `volume_overview`, `volume_sun`, `volume_mercury`, `volume_venus`, `volume_earth`, `volume_mars` | — |
+| `music_mix` | CHOP · `math` | `audio_pcm` | — |
 | `nebula_field` | TOP · `glsl` | — | Pixel Shader `/project1/nebula_pixel` · Compute Shader `/project1/nebula_field_compute` |
 | `nebula_field_compute` | DAT · `text` | — | — |
 | `nebula_field_info` | DAT · `info` | — | — |
@@ -219,12 +217,6 @@ audio_各场景 → volume_各场景 → music_mix → audio_device
 | `solar_atlas_info1` | DAT · `info` | — | — |
 | `solar_atlas_pixel1` | DAT · `text` | — | — |
 | `viewport` | COMP · `container` | — | TOP `/project1/out_image` |
-| `volume_earth` | CHOP · `math` | `audio_earth` | — |
-| `volume_mars` | CHOP · `math` | `audio_mars` | — |
-| `volume_mercury` | CHOP · `math` | `audio_mercury` | — |
-| `volume_overview` | CHOP · `math` | `audio_overview` | — |
-| `volume_sun` | CHOP · `math` | `audio_sun` | — |
-| `volume_venus` | CHOP · `math` | `audio_venus` | — |
 | `wheel_zoom` | DAT · `panelexec` | — | Panels `/project1/viewport` · Panel Value `wheel` |
 
 ### `/project1/closeup_feedback`

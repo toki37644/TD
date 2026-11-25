@@ -1,6 +1,7 @@
 """Continuous orbits, camera state, audio analysis and shared particle simulation."""
 
 from collections import deque
+from io import BytesIO
 from math import cos, exp, hypot, sin, tau
 from time import monotonic
 
@@ -22,6 +23,8 @@ RADII = (.065, .015, .023, .027, .020)
 DETAIL_ZOOM = .78 * ASPECT / (2. * max(RADII))
 INSPECT_RADIUS = 1.35 * ASPECT / 2.
 WHEEL_SCALE = 1.18
+AUDIO_RATE = 44100
+PCM_ASSET = 'orbit-audio.npz'
 AXIS_POSITIONS = (-.205, -.076, .024, .132, .232)
 AXIS_PHASES = (0, 1.37, 2.67, .87, 1.54)
 ORBIT_SPEEDS = (0, .27, .21, .16, .13)
@@ -345,6 +348,46 @@ class Spectrum:
         return 1. - np.exp(-np.r_[raw * [12., 10., 28.], flux * 20.])
 
 
+class PCMPlayback:
+    """Keep decoded stereo tracks in memory and mix a short, contiguous slice."""
+
+    def __init__(self, clips):
+        self.clips = clips
+        self.track = -1
+        self.cursor = [0] * len(clips)
+        self.gains = [0.] * len(clips)
+        self.start = 0
+        self.end = None
+        self.block = np.zeros((2, 735), dtype=np.float32)
+        self.source = self.block
+
+    def render(self, target, end, nominal):
+        if end == self.end:
+            return False
+        self.start = end - min(8820, end - self.end) if self.end is not None and end > self.end else end - nominal
+        self.end = end
+        if target != self.track:
+            self.cursor[target] = 0
+            self.track = target
+        offsets = np.arange(end - self.start)
+        seconds = (offsets + 1).astype(np.float32) / AUDIO_RATE
+        mixed = np.zeros((offsets.size, 2), dtype=np.float32)
+        for i, clip in enumerate(self.clips):
+            if i != target and self.gains[i] <= .0001:
+                self.gains[i] = 0.
+                continue
+            goal, rate = (.52, 7.) if i == target else (0., 5.5)
+            envelope = goal + (self.gains[i] - goal) * np.exp(-rate * seconds)
+            self.gains[i] = float(envelope[-1])
+            block = clip[(self.cursor[i] + offsets) % len(clip)].astype(np.float32) / 32768.
+            self.cursor[i] = (self.cursor[i] + offsets.size) % len(clip)
+            mixed += block * envelope[:, None]
+            if i == target:
+                self.source = block.T
+        self.block = np.ascontiguousarray(mixed.T)
+        return True
+
+
 class ParticleField:
     def __init__(self):
         rng = np.random.default_rng(14571)
@@ -353,8 +396,8 @@ class ParticleField:
         self.scatter = rng.normal(0, 1, 16400).astype(np.float32)
         self.sky = rng.random((4, 1300), dtype=np.float32)
         count = 35200
-        self.random = rng.random((7, count))
-        self.lane = rng.normal(0, 1, count)
+        self.random = rng.random((7, count)).astype(np.float32)
+        self.lane = rng.normal(0, 1, count).astype(np.float32)
         self.spark = .10 + .61 * self.random[4] ** 4.7
         dots = rng.random((6, 23000), dtype=np.float32)
         height = 2 * dots[0] - 1
@@ -367,6 +410,9 @@ class ParticleField:
         self.trail_noise = rng.normal(0, 1, (2, 24)).astype(np.float32)
         self.trail_tone = rng.random(24, dtype=np.float32)
         self.spray = rng.random((5, 1500), dtype=np.float32)
+        width, height = SIZE
+        self.buckets = np.zeros(height * width * 4, dtype=np.uint16)
+        self.raster = np.empty((height, width, 4), dtype=np.uint8)
 
     def overview(self, state):
         sun_x, sun_y, _, _ = state.bodies[0]
@@ -532,7 +578,8 @@ class ParticleField:
 
     def render(self, state):
         w, h = SIZE
-        buckets = np.zeros((h * w * 4,), np.uint16)
+        buckets = self.buckets
+        buckets.fill(0)
         def palette_channels(layer):
             x, y, alpha, palette = layer
             return x, y, alpha, np.where(palette < .73, 0, np.where(palette < .97, 1, 2))
@@ -559,7 +606,8 @@ class ParticleField:
             np.add.at(buckets, base + w * 4, (weight * (1. - fx) * fy).astype(np.uint16))
             np.add.at(buckets, base + w * 4 + 4, (weight * fx * fy).astype(np.uint16))
         np.minimum(buckets, 255, out=buckets)
-        return buckets.astype(np.uint8).reshape(h, w, 4)
+        np.copyto(self.raster, buckets.reshape(h, w, 4), casting='unsafe')
+        return self.raster
 
 
 class Atlas:
@@ -578,10 +626,16 @@ class Atlas:
         self.panel = op(ROOT + 'viewport')
         self.sources = [op(ROOT + 'audio_' + name) for name in SCENES]
         self.envelopes = [op(ROOT + 'volume_' + name) for name in SCENES]
+        self.audio_chop = op(ROOT + 'audio_pcm')
+        self.pcm = None
+        if self.audio_chop is not None:
+            with np.load(BytesIO(op('/project1').vfs[PCM_ASSET].byteArray), allow_pickle=False) as archive:
+                self.pcm = PCMPlayback(tuple(archive[name] for name in SCENES))
         self.cloud = op(ROOT + 'particles')
         self.feedback = op(ROOT + 'feedback_material')
         self.closeup = op(ROOT + 'closeup_feedback')
         self.rms = 0.
+        self.uniform_values = {}
         self.cloud.lock = True
         self.last_raster = 0.0
         self.hover_origin = None
@@ -594,20 +648,40 @@ class Atlas:
             self.last_raster = now
 
         uniforms = self.state.uniforms()
-        targets = (*zip(self.uniform_parameters, uniforms), *zip(self.nebula_uniforms, uniforms[1:4]))
-        for pars, values in targets:
-            for par, value in zip(pars, values):
-                par.val = float(value)
+        active = self.state.shown >= 0
+        backdrop = uniforms[1:4] if active else ((0., .5, .5, 0.), (0.,)*4, (-1., 0., -1., 0.))
+        targets = (*zip(self.uniform_parameters, uniforms), *zip(self.nebula_uniforms, backdrop))
+        for group, (pars, values) in enumerate(targets):
+            for channel, (par, value) in enumerate(zip(pars, values)):
+                value = float(value)
+                key = (group, channel)
+                if force or self.uniform_values.get(key) != value:
+                    par.val = value
+                    self.uniform_values[key] = value
         bass, mid, _, attack = self.state.energy
         if self.feedback is not None:
             close = self.state.lock_fade
             self.feedback.par.Drive = float((1.-close)*(.16+.89*bass+.32*attack) + close*(.12+1.74*self.rms))
             self.feedback.par.Detail = float(.50 + (1.-close)*.96*mid + close*1.50*self.rms)
-        if self.closeup is not None:
+        if self.closeup is not None and self.pcm is not None:
+            if self.closeup.allowCooking != active:
+                self.closeup.allowCooking = active
+        if self.closeup is not None and (active or self.pcm is None):
             self.closeup.par.Harmonicgain = .5 + 1.5 * self.rms
 
     def audio(self):
         target = self.state.focus + 1 if self.state.entered else 0
+        if self.pcm is not None:
+            rate = root.time.rate
+            end = round(absTime.frame * AUDIO_RATE / rate)
+            if not self.pcm.render(target, end, round(AUDIO_RATE/rate)):
+                return
+            if target != self.track:
+                self.spectrum = Spectrum()
+            self.track = target
+            self.analyze(self.pcm.source, self.pcm.gains[target], target)
+            self.audio_chop.cook(force=True)
+            return
         if target != self.track:
             source = self.sources[target]
             source.par.play = True
@@ -622,7 +696,9 @@ class Atlas:
             if i != target and gain < .0007 and self.sources[i].par.play.eval():
                 self.sources[i].par.play = False
         # Analyze the same time-sliced stereo audio that supplies the device output.
-        signal = self.sources[target].numpyArray()
+        self.analyze(self.sources[target].numpyArray(), self.gains[target], target)
+
+    def analyze(self, signal, gain, target):
         if signal is not None and signal.size:
             mono = signal.mean(axis=0)
             self.rms = float(np.sqrt(np.mean(mono * mono)))
@@ -630,7 +706,7 @@ class Atlas:
         else:
             self.rms = 0.
             energy = np.zeros(4)
-        energy *= min(1, self.gains[target] * 2) if target else .15
+        energy *= min(1, gain * 2) if target else .15
         for i, value in enumerate(energy):
             current = self.state.energy[i]
             self.state.energy[i] = approach(current, value, self.state.dt, 22. if value > current else 6.)
