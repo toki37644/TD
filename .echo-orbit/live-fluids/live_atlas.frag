@@ -11,7 +11,7 @@ uniform vec4 uMars;
 uniform vec4 uLabel;   // labeled body, opacity, side of the leader, dispersing
 
 uniform vec4 uTransition;
-uniform vec4 uView;    // close-up yaw, pitch, and whether the view is open
+uniform vec4 uView;    // close-up yaw, pitch, view open, introduction reveal progress
 
 out vec4 fragColor;
 
@@ -493,6 +493,26 @@ vec3 detailTitle(vec3 color, vec2 uv, int index) {
            english*alpha*vec3(.65,.73,.87);
 }
 
+#if TD_NUM_2D_INPUTS > 5
+vec3 detailIntro(vec3 color, vec2 uv, int index) {
+    // One 576 x 102 strip per body, starting from the top of the texture.
+    vec2 p = vec2(uv.x * FRAME_SIZE.x - 72., 190. - uv.y * FRAME_SIZE.y);
+    vec2 size = vec2(576., 102.);
+    vec2 edge = min(p, size - p);
+    float fade = smoothstep(.015, .84, uScene.y);
+    float shade = smoothstep(-27., 12., edge.x) * smoothstep(-32., 10., edge.y);
+    color = mix(color, vec3(.007, .011, .022), .77 * shade * fade * smoothstep(0., .28, uView.w));
+    if (min(edge.x, edge.y) < 0.) return color;
+
+    // Red is the antialiased glyph mask, green its normalized reading order.
+    vec2 atlas = vec2(p.x / size.x, 1. - (p.y / size.y + float(index)) / 5.);
+    vec2 ink = texture(sTD2DInputs[5], atlas).rg;
+    float onset = .79 * ink.g;
+    float alpha = ink.r * fade * smoothstep(onset, onset + .21, uView.w);
+    return mix(color, vec3(.94, .96, 1.), alpha);
+}
+#endif
+
 void main() {
     vec2 uv = vUV.st;
     vec2 screen = (uv - .5) * ASPECT;
@@ -550,6 +570,10 @@ void main() {
     color *= 1.0 - .30 * smoothstep(.43, 1.05, length(screen));
     color = instrument(color, screen, pointer);
     if (uView.z > .5 && scene >= 0) color = detailTitle(color,uv,scene);
+#if TD_NUM_2D_INPUTS > 5
+    if (scene >= 0 && scene < 5 && uView.w > 0. && uScene.y > .015)
+        color = detailIntro(color, uv, scene);
+#endif
     if (uView.z < .5 && label >= 0 && label < 5 && uLabel.y > .015 && uCamera.w < .35) {
         color += planetCaption(screen, bodies[label], label) * (1.-smoothstep(.02,.35,uCamera.w));
     }

@@ -17,6 +17,7 @@ HOVER_DWELL = .12
 HOVER_RELEASE = .10
 CENTER_SECONDS = 1.0
 RETURN_SECONDS = .85
+INTRO_SECONDS = 1.8
 SCENES = ('overview', 'sun', 'mercury', 'venus', 'earth', 'mars')
 # The overview previously imposed a .015 render minimum on Mercury.
 RADII = (.065, .015, .023, .027, .020)
@@ -105,6 +106,8 @@ class CameraState:
         self.energy = np.zeros(4, dtype=np.float32)
         self.cursor_trail = deque(maxlen=27)
         self.burst = None
+        self.intro_started = None
+        self.intro_progress = 0.
 
     def center_uv(self, body_id):
         x, y, _, _ = self.bodies[body_id]
@@ -114,6 +117,16 @@ class CameraState:
     def hit_radius(self, body_id):
         scale = 1. + .14 * self.label_alpha if self.label_id == body_id else 1.
         return self.bodies[body_id][2] * self.camera[2] * scale
+
+    def detail_hit(self, position):
+        u, v = self.center_uv(self.focus)
+        x, y, radius = self.arrival_origin
+        # Match the moving sphere in bodyLayer, including the current wheel zoom.
+        blend = smooth_between(0., 1., self.arrival)
+        center = (.5 + (1. - blend) * x / ASPECT + blend * (u - .5),
+                  .5 + (1. - blend) * y + blend * (v - .5))
+        radius = (1. - blend) * radius + blend * self.bodies[self.focus][2] * self.camera[2]
+        return screen_distance(position, center) <= radius
 
     def visible_hit(self, position):
         closest = -1
@@ -217,6 +230,8 @@ class CameraState:
                 self.leave()
             else:
                 self.burst = ((position[0] - .5) * ASPECT, position[1] - .5, self.last)
+                if self.intro_started is None and self.detail_hit(position):
+                    self.intro_started = self.last
             return
         target = self.hit(position)
         if target >= 0:
@@ -227,6 +242,8 @@ class CameraState:
             self.arrival = 0.
             self.focus = self.shown = target
             self.entered = True
+            self.intro_started = None
+            self.intro_progress = 0.
             self.hover = -1
             self.hover_candidate = -1
             self.hover_anchor = self.hover_left_at = self.hover_released_at = None
@@ -299,6 +316,8 @@ class CameraState:
         self.intent = approach(self.intent, float(self.entered and inside and not in_return), dt, 7.)
         self.back_glow = approach(self.back_glow, float(in_return), dt, 12.)
         self.lock_fade = approach(self.lock_fade, float(self.entered), dt, 6.7)
+        if self.entered and self.intro_started is not None and self.intro_progress < 1.:
+            self.intro_progress = min(1., (now - self.intro_started) / INTRO_SECONDS)
         if self.entered and inside and not in_return and speed > .13:
             point = ((self.pointer[0] - .5) * ASPECT, self.pointer[1] - .5)
             self.cursor_trail.append((*point, now))
@@ -322,7 +341,7 @@ class CameraState:
         return (self.camera, (self.time, *self.pointer, self.intent * (.26 + .74 * self.motion)), tuple(self.energy),
                 (self.shown, self.lock_fade, self.hover if not self.entered else -1, self.back_glow),
                 *self.bodies, (self.label_id, self.label_alpha, self.label_side, float(self.label_leaving)),
-                (self.arrival, *self.arrival_origin), (*self.view, float(self.entered), 0.))
+                (self.arrival, *self.arrival_origin), (*self.view, float(self.entered), self.intro_progress))
 
 
 class Spectrum:

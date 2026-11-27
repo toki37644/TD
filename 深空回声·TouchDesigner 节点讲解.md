@@ -1,6 +1,6 @@
 # 深空回声 TouchDesigner 节点讲解
 
-打开 [深空回声-彩雾交互版.toe](深空回声-彩雾交互版.toe)，进入 `/project1`。作品的交互由一份 Python 状态脚本统一管理。五路 TOP 图像汇入一个 GLSL Multi TOP，六段立体声音轨由一个 Script CHOP 输出。球体、星云、星尘和标题在同一张 720 × 1280 的画面中渲染。
+打开 [深空回声-彩雾交互版.toe](深空回声-彩雾交互版.toe)，进入 `/project1`。作品的交互由一份 Python 状态脚本统一管理。六路 TOP 图像汇入一个 GLSL Multi TOP，六段立体声音轨由一个 Script CHOP 输出。球体、星云、星尘和文字在同一张 720 × 1280 的画面中渲染。
 
 [完整交互演示](深空回声·完整交互演示.mp4)有可见的指针、点击波纹和滚轮方向标记。下面用工程里的原节点名讲搭建顺序，附录列出保存于工程中的节点、连线和常用参数引用。
 
@@ -15,7 +15,8 @@ particles             ── 输入 0 ┐
 nebula_field          ── 输入 1 │
 planet_names          ── 输入 2 ├→ solar_atlas → out_image → viewport → /perform
 feedback_material/out1 ─ 输入 3 │
-closeup_feedback/out1 ── 输入 4 ┘
+closeup_feedback/out1 ── 输入 4 │
+planet_intros          ── 输入 5 ┘
 
 orbit-audio.npz → orbit_engine → audio_pcm → music_mix → audio_device
 ```
@@ -31,7 +32,7 @@ orbit-audio.npz → orbit_engine → audio_pcm → music_mix → audio_device
 | `viewport` Container COMP | 宽 720、高 1280，背景 TOP 指向 `out_image`。启用 **Use Mouse Wheel**。脚本从这里读 `inside` 和 `insideu/insidev`，点击时取 `u/v`。TD 的 V 轴从下往上。 |
 | `/perform` Window COMP | 将 **Window Operator** 设为 `/project1/viewport`，窗口水平、垂直居中。关闭窗口的 **Close on Escape**，让 Esc 交给作品的返回事件。 |
 | `clock` Execute DAT | 启动后让时间轴播放。启用 **Frame Start**，每帧调用 `orbit_engine.module.tick()`。 |
-| `left_click` Panel Execute DAT | **Panels** 指向 `viewport`，**Panel Value** 设 `lselect`，开启 **Off to On**。按下左键时执行 `orbit_engine.module.click()`。总览负责进入，近景按点击位置区分返回和星尘扩散。 |
+| `left_click` Panel Execute DAT | **Panels** 指向 `viewport`，**Panel Value** 设 `lselect`，开启 **Off to On**。按下左键时执行 `orbit_engine.module.click()`。总览负责进入。近景按点击位置处理返回、星尘扩散和球体介绍。 |
 | `wheel_zoom` Panel Execute DAT | 同样指向 `viewport`，监听 `wheel` 并开启 **Value Change**。在 `onValueChange(panelValue, oldValue=None)` 将 `panelValue.val` 传入 `scroll()`。滚轮值回到零时不改变缩放目标。 |
 | `escape_to_overview` Panel Execute DAT | 监听 `viewport` 的 `key`，把键值交给 `go_back()`。 |
 | `return_key` Keyboard In DAT | 开启 Perform 输入，登记 `esc escape`，**Callbacks** 指向 `return_key_callbacks1`。它是 Perform 窗口的键盘返回入口。 |
@@ -46,11 +47,12 @@ orbit-audio.npz → orbit_engine → audio_pcm → music_mix → audio_device
 - **进入。** 左键记录当时的中心和半径，设置 `focus` 及 `shown`，启动 1.52 秒聚散进度。点位、镜头和粒子从总览的位置衔接到近景。着色器只在进入状态显示顶部中英文标题。
 - **球体比例。** 总览基础半径依次是 0.065、0.015、0.023、0.027、0.020。首次进入各近景共用一个镜头倍率，所以仍能看出大小差异。鼠标横向位置映射偏航角，纵向位置映射俯仰角。两个角度都平滑更新。
 - **缩放。** 每个向上的轮格把缩放目标乘以 1.18，向下则除以 1.18。最小值是该天体的比例近景，最大目标约为画面宽度的 1.35 倍直径，便于靠近看球面。脚本逐帧逼近目标，鼠标旋转仍可继续。
+- **天体介绍。** 进入近景后点击球体，`detail_hit()` 按画面上的球体中心和半径判断是否命中，计算包含入场位移和滚轮缩放。首次命中后，约 1.8 秒逐字显示底部正文。返回时正文随过渡淡出，再进入时重新隐藏。
 - **近景点击和返回。** 左上角箭头有固定触发范围。点击其余区域会记录星尘扩散的中心和起始时间。箭头和 Esc 都执行 `leave()`，并重置缩放、尾迹和场景状态。
 
 [Python 源码](.echo-orbit/orbit_runtime.py)
 
-## 2. 五路画面怎么进主着色器
+## 2. 六路画面怎么进主着色器
 
 在 `solar_atlas` 上把输出分辨率设为 720 × 1280，**Pixel Shader** 指向 `atlas_pixel`。按下表从编号 0 起接入 TOP。输入编号会决定 GLSL 代码从哪一张纹理取样。
 
@@ -61,6 +63,7 @@ orbit-audio.npz → orbit_engine → audio_pcm → music_mix → audio_device
 | 2 | `planet_names` Movie File In TOP，加载 `body-names-bilingual.png` | 嵌入的 256 × 720 图集。每颗天体占 144 像素高的区域，包含总览英文大写、近景中文、近景英文三行。GLSL 按场景和用途取字。 |
 | 3 | `feedback_material/out1` | 提供总览球面和近景主材质。近景沿用旧版金星的前后半球映射、固定方向光与球缘光。 |
 | 4 | `closeup_feedback/out1` | 提供第二套反馈色束。展示页在相同球面坐标下叠入约 12% 的细节，并按不同天体调色。 |
+| 5 | `planet_intros` Movie File In TOP，加载 `planet-intros.png` | 嵌入的 576 × 510 图集。R 通道存文字覆盖率，G 通道存字的出现顺序。`detailIntro()` 用同一张图集合成五颗天体的介绍。 |
 
 `atlas_pixel` 先把 UV 变成 9∶16 的等比例坐标，再换算到镜头所在的世界坐标。近景用圆形覆盖率和球面法线绘制球体，边缘做像素级抗锯齿。之后叠入星尘、日冕、返回箭头和文字，最后送给 `out_image`。这里的球面、日冕和 UI 都在同一 GLSL 渲染流程完成。
 
@@ -73,7 +76,7 @@ orbit-audio.npz → orbit_engine → audio_pcm → music_mix → audio_device
 | `uSun` 至 `uMars` | 每颗天体的 X/Y、基础半径、自转相位。 |
 | `uLabel` | 英文悬停标签的天体、透明度、文字方位、是否正在消散。 |
 | `uTransition` | 聚散进度、出发位置和出发半径。 |
-| `uView` | 近景球体的偏航、俯仰和近景开关。 |
+| `uView` | 近景球体的偏航、俯仰、近景开关和介绍淡入进度。 |
 
 `particle_callbacks` 是 `particles` 当前引用的回调 DAT。主流程由 `orbit_engine` 将粒子纹理写入锁定的 TOP。另一个 `particles_callbacks` 是保存的旧脚本。`solar_atlas_pixel1`、`nebula_field_pixel` 是 GLSL 节点生成的模板。实际 Pixel Shader 引用见上表。`solar_atlas_compute1` 和 `nebula_field_compute` 保留在各自的 Compute Shader 参数，实际运行用 Pixel Shader 模式。`solar_atlas_info1` 和 `nebula_field_info` 用来查看编译信息。
 
@@ -148,7 +151,7 @@ orbit-audio.npz → orbit_engine → audio_pcm → music_mix → audio_device
 
 1. **先跑通画面。** 建 `viewport`、`out_image` 和 `/perform`，先接一张简单 TOP 测试窗口。确认分辨率和 V 轴方向，再换成 `solar_atlas`。
 2. **单独跑通两套材质。** 先验证每个 `feedback1` 的目标、反馈重置和 Ramp 输入，再在两个 `out1` 检查连续几帧。两套回灌分别指向 Cross 和 Maximum。
-3. **按编号接五路图像。** 配好 GLSL 的 Pixel Shader、名称图集及 12 组向量参数，让 `clock` 逐帧写入并确认开头能显示横轴星图。
+3. **按编号接六路图像。** 配好 GLSL 的 Pixel Shader、名称与介绍图集及 12 组向量参数，让 `clock` 逐帧写入。介绍图集可用 [打包脚本](.echo-orbit/live-fluids/add_planet_intros.py) 生成。
 4. **接面板事件。** 先测悬停和点击，再测滚轮两个方向，以及箭头、Esc 返回。滚轮是瞬时值，所以用 Panel Execute DAT 监听变化。
 5. **接声音并验收。** 将 `audio_pcm` 的立体声接入 `music_mix → audio_device`。依次进入五颗天体，确认音轨交叉淡化、播完后循环、星尘受指针牵引、再次进入时恢复基础倍率。
 6. **录制。** 用 Movie File Out TOP 接 `out_image`。短录制可将 **Audio CHOP** 指向 `music_mix` 同时录音。这次完整版将原工程画面和六段原声分开处理，按同一场景切换和音量包络混音，再叠加录下的指针坐标、动作标记和字幕。 [录制脚本](.echo-orbit/live-fluids/record_full_demo.py) · [Movie File Out TOP 手册](https://derivative.ca/UserGuide/Movie_File_Out_TOP)
@@ -174,7 +177,7 @@ orbit-audio.npz → orbit_engine → audio_pcm → music_mix → audio_device
 - **`/local/midi`。** `device`、`midi_inputs`、`midi_outputs` 和 `userdevices` 管理默认 MIDI 配置。`template` 内的表定义按钮、滑块和属性。进入 `mapmaster1` 后，`midiinmap → out1` 提供输入映射，`collect_buttons → buttons` 与 `collect_sliders → sliders` 提供默认控制通道，另有 `midiout` 和 CHOP Execute。
 
 
-共 **224 个节点**。标记为「运行时」的条目由 TouchDesigner 模板或 Palette 帮助组件展开。
+共 **225 个节点**。标记为「运行时」的条目由 TouchDesigner 模板或 Palette 帮助组件展开。
 
 ### `/`
 
@@ -208,11 +211,12 @@ orbit-audio.npz → orbit_engine → audio_pcm → music_mix → audio_device
 | `particle_callbacks` | DAT · `text` | — | — |
 | `particles` | TOP · `script` | — | Callbacks `/project1/particle_callbacks` |
 | `particles_callbacks` | DAT · `text` | — | — |
+| `planet_intros` | TOP · `moviefilein` | — | File `vfs:/project1:planet-intros.png` |
 | `planet_names` | TOP · `moviefilein` | — | File `vfs:/project1:body-names-bilingual.png` |
 | `return_key` | DAT · `keyboardin` | — | Callbacks `/project1/return_key_callbacks1` |
 | `return_key_callbacks` | DAT · `text` | — | — |
 | `return_key_callbacks1` | DAT · `text` | — | — |
-| `solar_atlas` | TOP · `glslmulti` | `particles`, `nebula_field`, `planet_names`, `/project1/feedback_material/out1`, `/project1/closeup_feedback/out1` | Pixel Shader `/project1/atlas_pixel` · Compute Shader `/project1/solar_atlas_compute1` |
+| `solar_atlas` | TOP · `glslmulti` | `particles`, `nebula_field`, `planet_names`, `/project1/feedback_material/out1`, `/project1/closeup_feedback/out1`, `planet_intros` | Pixel Shader `/project1/atlas_pixel` · Compute Shader `/project1/solar_atlas_compute1` |
 | `solar_atlas_compute1` | DAT · `text` | — | — |
 | `solar_atlas_info1` | DAT · `info` | — | — |
 | `solar_atlas_pixel1` | DAT · `text` | — | — |
